@@ -42,20 +42,13 @@ Outputs: `outputs/tracking_results/VID30/tracking.json` (track IDs + boxes + cla
 #### Mermaid Pipeline
 ```mermaid
 flowchart LR
-    A[Frames (PNG) + JSON tlwh bboxes] --> B[Frozen V-JEPA2
-    ViT-L/16 encoder]
-    B --> C[Detection head (DETR-style
-    multi-query)]
-    C --> D[Hungarian matching
-    CE + 5×L1 + 2×GIoU]
-    D --> E[Best checkpoint
-    best_detect_probe.pt]
-    E --> F[track_cholec.py
-    per-frame inference]
-    F --> G[Greedy IOU association
-    tracking.json]
-    G -. planned .-> H[TrackEval
-    HOTA/MOTA/IDF1]
+    A[Frames (PNG) + JSON tlwh bboxes] --> B[Frozen V-JEPA2 ViT-L/16 encoder]
+    B --> C[Detection head (DETR-style multi-query)]
+    C --> D[Hungarian matching: CE + 5×L1 + 2×GIoU]
+    D --> E[Best checkpoint: best_detect_probe.pt]
+    E --> F[track_cholec.py per-frame inference]
+    F --> G[Greedy IOU association → tracking.json]
+    G -. planned .-> H[TrackEval: HOTA/MOTA/IDF1]
 ```
 
 ### Dataset Configuration
