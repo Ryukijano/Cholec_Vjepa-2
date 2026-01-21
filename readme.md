@@ -195,6 +195,9 @@ ls /teamspace/studios/this_studio/cholec_dataset/Training/VID01/
 
 ---
 
+T_SNE- scores so far 5-NN leave-one-out accuracy (instrument id): 0.568
+Running t-SNE on 4106 samples, perplexity=50.0
+
 ## Quick Start Commands
 
 ```bash
