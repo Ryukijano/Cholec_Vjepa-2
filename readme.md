@@ -7,8 +7,6 @@
 - **Tracker:** `scripts/track_cholec.py` (greedy IOU; drop-in ByteTrack/Bot-SORT possible after detector is ready).
 - **Probes/visuals:** t-SNE scripts and attentive/linear probes available; embeddings show moderate separation but need a trained head.
 
-**t-SNE quick read (validation embeddings):** Tool 3 clusters somewhat, but tool 0 vs 2 are mixed → backbone alone isn’t linearly separable; expect a trained head (attentive/detection) to improve. Use linear probe accuracy for a quantitative check.
-
 ### How to train the detection probe
 ```bash
 python scripts/train_detection_probe.py \
