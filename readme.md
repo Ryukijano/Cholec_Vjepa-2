@@ -1,6 +1,5 @@
 # V-JEPA 2 Training Setup - CholecTrack20 Dataset
 
-## Status: Ready for Model Integration ✓
 
 ### Current Progress (CholecTrack20 + V-JEPA2)
 - **Frozen encoder:** `outputs/vjepa2-cholec-pretrain/latest.pt` (ViT-L/16, tubelet=2, crop=224).
