@@ -1,0 +1,20 @@
+# Windows requirements for V-JEPA2 surgical tool detection
+torch==2.2.0
+torchvision==0.17.0
+numpy>=1.24.0
+pillow>=10.0.0
+tqdm>=4.65.0
+tensorboard>=2.14.0
+scipy>=1.11.0
+wandb>=0.15.0
+matplotlib>=3.7.0
+opencv-python>=4.8.0
+scikit-learn>=1.3.0
+pandas>=2.0.0
+seaborn>=0.12.0
+
+# For tracker (ByteTrack-style)
+# scipy is already listed above for linear_sum_assignment
+
+# Optional: for faster data loading
+# pyarrow>=12.0.0

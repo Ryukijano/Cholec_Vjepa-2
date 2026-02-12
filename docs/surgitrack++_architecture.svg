@@ -1,0 +1,273 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 2200">
+  <defs>
+    <style>
+      .box { fill: white; stroke: #333; stroke-width: 2; }
+      .header { fill: #2563eb; stroke: #1e40af; stroke-width: 2; }
+      .detection { fill: #10b981; stroke: #059669; stroke-width: 2; }
+      .temporal { fill: #8b5cf6; stroke: #7c3aed; stroke-width: 2; }
+      .reid { fill: #f59e0b; stroke: #d97706; stroke-width: 2; }
+      .tracker { fill: #ef4444; stroke: #dc2626; stroke-width: 2; }
+      .loss { fill: #ec4899; stroke: #db2777; stroke-width: 2; }
+      .text { font-family: Arial, sans-serif; font-size: 14px; fill: white; text-anchor: middle; }
+      .text-dark { font-family: Arial, sans-serif; font-size: 13px; fill: #333; text-anchor: middle; }
+      .text-small { font-family: Arial, sans-serif; font-size: 11px; fill: #666; text-anchor: middle; }
+      .title { font-family: Arial, sans-serif; font-size: 20px; font-weight: bold; fill: #1e293b; text-anchor: middle; }
+      .subtitle { font-family: Arial, sans-serif; font-size: 14px; fill: #475569; text-anchor: middle; }
+      .arrow { stroke: #475569; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+      .arrow-thick { stroke: #1e293b; stroke-width: 3; fill: none; marker-end: url(#arrowhead-thick); }
+      .formula { font-family: 'Courier New', monospace; font-size: 12px; fill: #1e293b; }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#475569" />
+    </marker>
+    <marker id="arrowhead-thick" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#1e293b" />
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="700" y="40" class="title">Dual-Expert SurgiTrack++ Architecture</text>
+  <text x="700" y="65" class="subtitle">Real-time Surgical Tool Tracking with Direction-Aware Re-ID</text>
+
+  <!-- INPUT SECTION -->
+  <rect x="50" y="100" width="1300" height="120" class="header" rx="8"/>
+  <text x="700" y="130" class="text">INPUT STAGE</text>
+  
+  <rect x="150" y="150" width="400" height="50" class="box" rx="5"/>
+  <text x="350" y="165" class="text-dark" font-weight="bold">Video Clip (t-15:t)</text>
+  <text x="350" y="185" class="text-small">16 frames @ 224◊224, normalized [0,1]</text>
+  
+  <rect x="850" y="150" width="400" height="50" class="box" rx="5"/>
+  <text x="1050" y="165" class="text-dark" font-weight="bold">Current Frame (t)</text>
+  <text x="1050" y="185" class="text-small">576◊576 for detection</text>
+
+  <!-- DUAL EXPERT SECTION -->
+  <text x="700" y="260" class="title" font-size="16">DUAL EXPERT PROCESSING (Parallel)</text>
+
+  <!-- V-JEPA2 Temporal Expert -->
+  <rect x="50" y="280" width="600" height="380" class="temporal" rx="8"/>
+  <text x="350" y="310" class="text" font-size="16" font-weight="bold">V-JEPA2 Temporal Expert (WHO + HOW)</text>
+  
+  <rect x="80" y="330" width="540" height="70" class="box" rx="5"/>
+  <text x="350" y="350" class="text-dark" font-weight="bold">ViT-Large Encoder (303M params)</text>
+  <text x="350" y="370" class="text-small">24 Transformer blocks, 1024D embeddings</text>
+  <text x="350" y="385" class="text-small">3D Tubelet patches (2◊16◊16), Pretrained SSL on Cholec80</text>
+  
+  <rect x="80" y="415" width="540" height="60" class="box" rx="5"/>
+  <text x="350" y="435" class="text-dark" font-weight="bold">LoRA Fine-tuning (Rank 16)</text>
+  <text x="350" y="455" class="text-small">Layers 12-23 trainable, ±=16.0, ~5M params</text>
+  
+  <rect x="80" y="490" width="540" height="60" class="box" rx="5"/>
+  <text x="350" y="510" class="text-dark" font-weight="bold">Spatial-Temporal Tokens</text>
+  <text x="350" y="530" class="text-small">[B, T◊N, D] = [batch, 16◊196, 1024]</text>
+  
+  <rect x="80" y="565" width="540" height="80" class="box" rx="5"/>
+  <text x="350" y="585" class="text-dark" font-weight="bold">ROI Temporal Pooling</text>
+  <text x="350" y="605" class="text-small">Per detection: Extract tokens at box location</text>
+  <text x="350" y="620" class="text-small">across all T frames í [M, T, 1024]</text>
+  <text x="350" y="635" class="text-small">M = number of detections</text>
+
+  <!-- RF-DETR Detection Expert -->
+  <rect x="750" y="280" width="600" height="380" class="detection" rx="8"/>
+  <text x="1050" y="310" class="text" font-size="16" font-weight="bold">RF-DETR Detection Expert (WHERE + WHAT)</text>
+  
+  <rect x="780" y="330" width="540" height="70" class="box" rx="5"/>
+  <text x="1050" y="350" class="text-dark" font-weight="bold">DINOv2 Backbone (frozen)</text>
+  <text x="1050" y="370" class="text-small">ViT-Base/14, Multi-scale features</text>
+  <text x="1050" y="385" class="text-small">Fine-tuned on CholecTrack20</text>
+  
+  <rect x="780" y="415" width="540" height="60" class="box" rx="5"/>
+  <text x="1050" y="435" class="text-dark" font-weight="bold">Transformer Decoder</text>
+  <text x="1050" y="455" class="text-small">300 learnable queries í object proposals</text>
+  
+  <rect x="780" y="490" width="260" height="60" class="box" rx="5"/>
+  <text x="910" y="510" class="text-dark" font-weight="bold">Detections</text>
+  <text x="910" y="530" class="text-small">Boxes (cx,cy,w,h)</text>
+  <text x="910" y="545" class="text-small">Classes [0-6]</text>
+  
+  <rect x="1060" y="490" width="260" height="60" class="box" rx="5"/>
+  <text x="1190" y="510" class="text-dark" font-weight="bold">Query Features</text>
+  <text x="1190" y="530" class="text-small">[M, 256D]</text>
+  <text x="1190" y="545" class="text-small">Appearance embeddings</text>
+  
+  <rect x="780" y="565" width="540" height="80" class="box" rx="5"/>
+  <text x="1050" y="585" class="text-dark" font-weight="bold">NMS + Filtering</text>
+  <text x="1050" y="605" class="text-small">IoU threshold: 0.5</text>
+  <text x="1050" y="620" class="text-small">Score threshold: 0.1 (low) / 0.65 (high)</text>
+
+  <!-- RE-ID HEAD SECTION -->
+  <rect x="50" y="700" width="1300" height="480" class="reid" rx="8"/>
+  <text x="700" y="730" class="text" font-size="16" font-weight="bold">4-BRANCH DIRECTION-AWARE RE-ID HEAD</text>
+
+  <!-- Direction Branch -->
+  <rect x="80" y="760" width="280" height="150" class="box" rx="5"/>
+  <text x="220" y="780" class="text-dark" font-weight="bold">Direction Branch</text>
+  <text x="220" y="800" class="text-small">Input: ROI temporal [M,T,1024]</text>
+  <text x="220" y="820" class="text-small">1-layer Transformer Encoder</text>
+  <text x="220" y="835" class="text-small">8 heads, FFN 512D</text>
+  <text x="220" y="855" class="text-small">í Take last frame token [M,1024]</text>
+  <text x="220" y="875" class="text-small">í MLP í [M,128D]</text>
+  <text x="220" y="895" class="text-small" font-style="italic">Captures trocar/operator identity</text>
+
+  <!-- Motion Branch -->
+  <rect x="390" y="760" width="280" height="150" class="box" rx="5"/>
+  <text x="530" y="780" class="text-dark" font-weight="bold">Motion Branch</text>
+  <text x="530" y="800" class="text-small">Input: ROI temporal [M,T,1024]</text>
+  <text x="530" y="820" class="text-small">Temporal difference:</text>
+  <text x="530" y="835" class="text-small">î = ROI[t] - ROI[t-1]</text>
+  <text x="530" y="855" class="text-small">MLP: 1024í512í128</text>
+  <text x="530" y="875" class="text-small">LayerNorm + GELU</text>
+  <text x="530" y="895" class="text-small" font-style="italic">Captures velocity/trajectory</text>
+
+  <!-- Appearance Branch -->
+  <rect x="700" y="760" width="280" height="150" class="box" rx="5"/>
+  <text x="840" y="780" class="text-dark" font-weight="bold">Appearance Branch</text>
+  <text x="840" y="800" class="text-small">Input: RF-DETR queries [M,256]</text>
+  <text x="840" y="820" class="text-small">(DINOv2-derived features)</text>
+  <text x="840" y="840" class="text-small">MLP: 256í512í128</text>
+  <text x="840" y="860" class="text-small">LayerNorm + GELU</text>
+  <text x="840" y="880" class="text-small" font-style="italic">Spatial semantics</text>
+  <text x="840" y="895" class="text-small" font-style="italic">(zeros during training)</text>
+
+  <!-- Box+Class Branch -->
+  <rect x="1010" y="760" width="280" height="150" class="box" rx="5"/>
+  <text x="1150" y="780" class="text-dark" font-weight="bold">Box + Class Branch</text>
+  <text x="1150" y="800" class="text-small">Input: [cx, cy, w, h, one_hot(cls)]</text>
+  <text x="1150" y="820" class="text-small">Geometry: [M, 4+7=11]</text>
+  <text x="1150" y="840" class="text-small">MLP: 11í256í128</text>
+  <text x="1150" y="860" class="text-small">GELU activation</text>
+  <text x="1150" y="880" class="text-small" font-style="italic">Context prior</text>
+  <text x="1150" y="895" class="text-small" font-style="italic">(curriculum: off initially)</text>
+
+  <!-- Gated Fusion -->
+  <rect x="280" y="940" width="840" height="100" class="box" rx="5"/>
+  <text x="700" y="965" class="text-dark" font-weight="bold" font-size="15">GATED FUSION MECHANISM</text>
+  <text x="700" y="990" class="formula">concat([dir, mot, app, box]) í MLP í softmax í [gÄ, gÅ, gÇ, gÉ]</text>
+  <text x="700" y="1010" class="formula">fused = gÄ∑dir + gÅ∑mot + gÇ∑app + gÉ∑box</text>
+  <text x="700" y="1030" class="formula">embedding = L2_normalize(MLP(fused)) í [M, 128D]</text>
+
+  <!-- Direction Classification Head -->
+  <rect x="80" y="1060" width="580" height="100" class="box" rx="5"/>
+  <text x="370" y="1085" class="text-dark" font-weight="bold">Direction Classification Head</text>
+  <text x="370" y="1105" class="text-small">From direction branch token [M,1024]</text>
+  <text x="370" y="1125" class="text-small">Linear: 1024 í num_bins (3 for left/center/right)</text>
+  <text x="370" y="1145" class="text-small">Proxy target: quantize box center-x into bins</text>
+
+  <!-- Losses Diagram -->
+  <rect x="690" y="1060" width="660" height="100" class="loss" rx="5"/>
+  <text x="1020" y="1085" class="text" font-weight="bold">TRAINING LOSSES</text>
+  <text x="1020" y="1108" class="text" font-size="12"> = 0.5∑_triplet + 0.5∑_contrastive + 0.2∑_direction + ª∑_gate</text>
+  <text x="1020" y="1130" class="text-small">Memory Bank: 8192 embeddings</text>
+  <text x="1020" y="1148" class="text-small">Triplet margin: 0.7 | Contrastive temp: 0.15í0.07</text>
+
+  <!-- TRACKER SECTION -->
+  <rect x="50" y="1220" width="1300" height="600" class="tracker" rx="8"/>
+  <text x="700" y="1250" class="text" font-size="16" font-weight="bold">MULTI-PERSPECTIVE SURGICAL TRACKER</text>
+
+  <!-- Cost Matrix -->
+  <rect x="80" y="1280" width="1240" height="110" class="box" rx="5"/>
+  <text x="700" y="1305" class="text-dark" font-weight="bold" font-size="15">DIRECTION-AWARE ASSOCIATION COST</text>
+  <text x="700" y="1330" class="formula" font-size="13">C(track, det) = w_iou∑(1-IoU) + w_reid∑(1-cos_sim) + w_dir∑dir_mismatch + w_cls∑cls_mismatch</text>
+  <text x="700" y="1355" class="text-small">Weights: w_iou=0.45, w_reid=0.35, w_dir=0.15, w_cls=0.05</text>
+  <text x="700" y="1375" class="text-small" font-style="italic">Hard rejection: ONLY if both class AND direction disagree</text>
+
+  <!-- 3-Stage Matching -->
+  <rect x="80" y="1410" width="380" height="180" class="box" rx="5"/>
+  <text x="270" y="1435" class="text-dark" font-weight="bold">Stage 1: High Confidence</text>
+  <text x="270" y="1455" class="text-small">Match active tracks í high-score dets</text>
+  <text x="270" y="1475" class="text-small">Threshold: score e 0.65</text>
+  <text x="270" y="1495" class="text-small">Cost threshold: 0.7</text>
+  <text x="270" y="1515" class="text-small">Full cost (IoU+ReID+Dir+Cls)</text>
+  <text x="270" y="1535" class="text-small" font-style="italic">Hungarian / Greedy assignment</text>
+  <text x="270" y="1555" class="text-small" font-style="italic">Updates: Kalman + embeddings</text>
+
+  <rect x="490" y="1410" width="380" height="180" class="box" rx="5"/>
+  <text x="680" y="1435" class="text-dark" font-weight="bold">Stage 2: Low Confidence</text>
+  <text x="680" y="1455" class="text-small">Match remaining active í low-score dets</text>
+  <text x="680" y="1475" class="text-small">Threshold: 0.1 d score &lt; 0.65</text>
+  <text x="680" y="1495" class="text-small">Cost threshold: 0.7</text>
+  <text x="680" y="1515" class="text-small">IoU-heavy (lower ReID weight)</text>
+  <text x="680" y="1535" class="text-small" font-style="italic">Handles partial occlusion</text>
+
+  <rect x="900" y="1410" width="420" height="180" class="box" rx="5"/>
+  <text x="1110" y="1435" class="text-dark" font-weight="bold">Stage 3: Re-identification</text>
+  <text x="1110" y="1455" class="text-small">Match lost tracks í remaining high dets</text>
+  <text x="1110" y="1475" class="text-small">Cost threshold: 0.9 (strict)</text>
+  <text x="1110" y="1495" class="text-small">ReID+Direction weighted heavily</text>
+  <text x="1110" y="1515" class="text-small" font-style="italic">Recovers from full occlusion/OOB</text>
+  <text x="1110" y="1535" class="text-small">Unmatched dets í new tracks</text>
+  <text x="1110" y="1555" class="text-small">Kalman prediction for lost tracks</text>
+
+  <!-- Perspective State Machine -->
+  <rect x="80" y="1620" width="1240" height="180" class="box" rx="5"/>
+  <text x="700" y="1645" class="text-dark" font-weight="bold" font-size="15">HBGM-INSPIRED PERSPECTIVE HIERARCHY</text>
+  
+  <text x="200" y="1675" class="text-dark" font-weight="bold">Visibility</text>
+  <text x="200" y="1695" class="text-small">new í active í lost í removed</text>
+  <text x="200" y="1715" class="text-small">Tracks tools in camera view</text>
+  <text x="200" y="1735" class="text-small">Lost if unmatched &gt; max_lost (30 frames)</text>
+  <text x="200" y="1755" class="text-small" font-style="italic">Standard MOT behavior</text>
+  
+  <text x="580" y="1675" class="text-dark" font-weight="bold">Intracorporeal</text>
+  <text x="580" y="1695" class="text-small">new í active í oob í reentered</text>
+  <text x="580" y="1715" class="text-small">Tracks tools inside patient body</text>
+  <text x="580" y="1735" class="text-small">OOB if class changes (tool swap)</text>
+  <text x="580" y="1755" class="text-small" font-style="italic">If dir stable: reenter (same trocar)</text>
+  
+  <text x="1020" y="1675" class="text-dark" font-weight="bold">Intraoperative</text>
+  <text x="1020" y="1695" class="text-small">new í active í oocv í oob í reidentified</text>
+  <text x="1020" y="1715" class="text-small">Lifetime identity (never dies easily)</text>
+  <text x="1020" y="1735" class="text-small">OOCV: visibility lost, intracorp active</text>
+  <text x="1020" y="1755" class="text-small" font-style="italic">Cross-validation prevents premature removal</text>
+
+  <!-- OUTPUT -->
+  <rect x="350" y="1850" width="700" height="80" class="header" rx="8"/>
+  <text x="700" y="1880" class="text" font-size="15" font-weight="bold">OUTPUT: Multi-Perspective Tracks</text>
+  <text x="700" y="1905" class="text-small">Per-frame: {track_id, box, class, score, embedding, direction_bin,</text>
+  <text x="700" y="1923" class="text-small">visibility_state, intracorporeal_state, intraoperative_state}</text>
+
+  <!-- Arrows -->
+  <path d="M 350 220 L 350 280" class="arrow-thick"/>
+  <path d="M 1050 220 L 1050 280" class="arrow-thick"/>
+  
+  <path d="M 350 660 L 220 760" class="arrow"/>
+  <path d="M 350 660 L 530 760" class="arrow"/>
+  
+  <path d="M 1050 660 L 840 760" class="arrow"/>
+  <path d="M 1050 660 L 910 760" class="arrow"/>
+  <path d="M 1050 660 L 1150 760" class="arrow"/>
+  
+  <path d="M 220 910 L 500 940" class="arrow"/>
+  <path d="M 530 910 L 600 940" class="arrow"/>
+  <path d="M 840 910 L 750 940" class="arrow"/>
+  <path d="M 1150 910 L 900 940" class="arrow"/>
+  
+  <path d="M 700 1040 L 700 1060" class="arrow-thick"/>
+  <path d="M 370 1160 L 700 1220" class="arrow"/>
+  <path d="M 1020 1160 L 700 1220" class="arrow"/>
+  
+  <path d="M 270 1590 L 270 1620" class="arrow"/>
+  <path d="M 680 1590 L 680 1620" class="arrow"/>
+  <path d="M 1110 1590 L 1110 1620" class="arrow"/>
+  
+  <path d="M 700 1800 L 700 1850" class="arrow-thick"/>
+
+  <!-- Performance Metrics Box -->
+  <rect x="50" y="1960" width="620" height="180" class="box" rx="8"/>
+  <text x="360" y="1990" class="text-dark" font-weight="bold" font-size="16">TRAINING CONFIGURATION</text>
+  <text x="360" y="2015" class="text-dark">RF-DETR: 50 epochs, batch 4◊4 grad_accum, lr=1e-4</text>
+  <text x="360" y="2038" class="text-dark">Re-ID: 40 epochs, batch 8, lr_head=3e-4, lr_lora=1e-5</text>
+  <text x="360" y="2061" class="text-dark">Curriculum: Phase A (0-10): Dir+Mot+App only</text>
+  <text x="360" y="2084" class="text-dark">           Phase B (10-25): Add Box branch</text>
+  <text x="360" y="2107" class="text-dark">Memory Bank: 8192, Margin: 0.7</text>
+  <text x="360" y="2130" class="text-dark" font-style="italic">GPU: RTX 4090 (24GB)</text>
+
+  <rect x="730" y="1960" width="620" height="180" class="box" rx="8"/>
+  <text x="1040" y="1990" class="text-dark" font-weight="bold" font-size="16">EXPECTED PERFORMANCE vs SurgiTrack</text>
+  <text x="1040" y="2020" class="text-dark" font-weight="bold">SurgiTrack (IPCAI 2025)</text>
+  <text x="1040" y="2040" class="text-dark">DetA: 71.7% | AssA: 55.3% | HOTA: 62.8%</text>
+  <text x="1040" y="2065" class="text-dark" font-weight="bold">SurgiTrack++ (Expected)</text>
+  <text x="1040" y="2085" class="text-dark">DetA: ~75%+ (RF-DETR) | AssA: ~60%+ (V-JEPA2 Re-ID)</text>
+  <text x="1040" y="2105" class="text-dark" font-weight="bold">HOTA: &gt; 65% (Target: Beat 62.8%)</text>
+  <text x="1040" y="2130" class="text-dark" font-style="italic">Dataset: CholecTrack20 (3 perspectives)</text>
+</svg>

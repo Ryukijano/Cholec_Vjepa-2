@@ -1,0 +1,49 @@
+# Data and outputs (large)
+data/
+cholec_dataset/
+cholec_coco/
+outputs/
+*.pth
+*.pt
+!code/TrackEval/gt_data/Readme.md
+!code/TrackEval/tracker_output/Readme.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Environments
+.env
+.venv
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs and experiment tracking
+wandb/
+*.log
+tb/
+runs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Optional: uncomment if you don't want to track these
+# train_taxonomy.tsv
+# checkpoints/
