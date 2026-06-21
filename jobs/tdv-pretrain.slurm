@@ -39,8 +39,6 @@ cd /scratch/kcwp264/Cholec_Vjepa-2
 
 # -- NCCL workarounds for L40S PCIe (no NVLink)
 export NCCL_P2P_DISABLE=1
-export NCCL_NET=SHM
-export NCCL_SHM_DISABLE=0
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 
 # -- WandB (optional)

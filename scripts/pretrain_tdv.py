@@ -32,12 +32,9 @@ from typing import Dict, List, Optional
 os.environ.setdefault('TORCH_NCCL_ASYNC_ERROR_HANDLING', '1')
 os.environ.setdefault('TORCH_SHOW_CPP_STACKTRACE', '1')
 os.environ.setdefault('NCCL_DEBUG', 'WARN')
-# NCCL_P2P_DISABLE=1 works around a known segfault on L40S PCIe (no NVLink)
-# where NCCL P2P transfers fail with SIGSEGV on the first collective.
+# NCCL_P2P_DISABLE=1 forces NCCL to use its internal SHM transport instead of
+# P2P DMA, which segfaults on L40S PCIe (no NVLink) on this AIRE node.
 os.environ.setdefault('NCCL_P2P_DISABLE', '1')
-# Use SHM for intra-node communication instead of P2P
-os.environ.setdefault('NCCL_SHM_DISABLE', '0')
-os.environ.setdefault('NCCL_NET', 'SHM')
 
 import torch
 import torch.nn as nn
