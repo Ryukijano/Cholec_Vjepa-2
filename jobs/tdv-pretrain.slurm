@@ -37,6 +37,12 @@ export LD_LIBRARY_PATH=/scratch/kcwp264/conda/envs/endofm-lv/lib:$LD_LIBRARY_PAT
 # -- Project root
 cd /scratch/kcwp264/Cholec_Vjepa-2
 
+# -- NCCL workarounds for L40S PCIe (no NVLink)
+export NCCL_P2P_DISABLE=1
+export NCCL_NET=SHM
+export NCCL_SHM_DISABLE=0
+export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
+
 # -- WandB (optional)
 export WANDB_MODE=online
 # export WANDB_API_KEY=your_key_here

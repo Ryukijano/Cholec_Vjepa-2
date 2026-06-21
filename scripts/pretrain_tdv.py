@@ -29,9 +29,15 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 # -- Debugging env vars (must be set before importing torch)
-os.environ.setdefault('NCCL_ASYNC_ERROR_HANDLING', '1')
+os.environ.setdefault('TORCH_NCCL_ASYNC_ERROR_HANDLING', '1')
 os.environ.setdefault('TORCH_SHOW_CPP_STACKTRACE', '1')
 os.environ.setdefault('NCCL_DEBUG', 'WARN')
+# NCCL_P2P_DISABLE=1 works around a known segfault on L40S PCIe (no NVLink)
+# where NCCL P2P transfers fail with SIGSEGV on the first collective.
+os.environ.setdefault('NCCL_P2P_DISABLE', '1')
+# Use SHM for intra-node communication instead of P2P
+os.environ.setdefault('NCCL_SHM_DISABLE', '0')
+os.environ.setdefault('NCCL_NET', 'SHM')
 
 import torch
 import torch.nn as nn
@@ -197,9 +203,9 @@ def train_tdv(config: dict, args: argparse.Namespace):
         log_baseline_losses=model_cfg.get('log_baseline_losses', True),
     ).to(device)
 
-    # -- Barrier: ensure all ranks finished loading model before DDP wrap
+    # -- Sync all ranks before DDP wrap (use device_ids to avoid NCCL guessing)
     if args.ddp:
-        torch.distributed.barrier()
+        torch.distributed.barrier(device_ids=[local_rank])
         if rank == 0:
             print(f"[DDP] All ranks ready, model loaded on device.")
             print(f"[DDP] Trainable params: {sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6:.1f}M")
@@ -408,6 +414,7 @@ def main():
         torch.distributed.init_process_group(
             backend='nccl',
             init_method='env://',
+            device_id=torch.device(f'cuda:{local_rank}'),
         )
         print(f"Initialized DDP: rank={torch.distributed.get_rank()}, "
               f"world_size={torch.distributed.get_world_size()}")
