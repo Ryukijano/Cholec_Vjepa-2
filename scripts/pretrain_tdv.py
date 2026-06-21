@@ -128,8 +128,17 @@ def progressive_unfreeze(model: TDVModel, epoch: int, unfreeze_schedule: List[Di
 
 
 def train_tdv(config: dict, args: argparse.Namespace):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Device: {device}")
+    if args.ddp:
+        local_rank = int(os.environ.get('LOCAL_RANK', 0))
+        torch.cuda.set_device(local_rank)
+        device = torch.device(f'cuda:{local_rank}')
+        rank = torch.distributed.get_rank()
+        world_size = torch.distributed.get_world_size()
+    else:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        rank = 0
+        world_size = 1
+    print(f"Device: {device} | rank={rank} | world_size={world_size}")
 
     # -- Parse SSL video list
     splits_path = PROJECT_ROOT / config['splits_path']
@@ -218,8 +227,8 @@ def train_tdv(config: dict, args: argparse.Namespace):
     output_dir = Path(config.get('output_dir', 'outputs/tdv_pretrain'))
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # -- WandB
-    use_wandb = config.get('use_wandb', False) and not args.no_wandb
+    # -- WandB (only on rank 0)
+    use_wandb = config.get('use_wandb', False) and not args.no_wandb and rank == 0
     if use_wandb:
         import wandb
         wandb.init(
@@ -230,7 +239,6 @@ def train_tdv(config: dict, args: argparse.Namespace):
 
     # -- DDP
     if args.ddp:
-        local_rank = int(os.environ.get('LOCAL_RANK', 0))
         model = nn.parallel.DistributedDataParallel(
             model, device_ids=[local_rank], find_unused_parameters=True,
         )
@@ -243,9 +251,10 @@ def train_tdv(config: dict, args: argparse.Namespace):
     epoch = 0
     best_loss = float('inf')
 
-    print(f"Starting TDV pretraining for {max_steps} steps...")
-    print(f"  batch_size={config.get('batch_size', 4)}, num_frames={config.get('num_frames', 4)}")
-    print(f"  peak_lr={peak_lr}, warmup={warmup_steps}, grad_clip={grad_clip}")
+    if rank == 0:
+        print(f"Starting TDV pretraining for {max_steps} steps...")
+        print(f"  batch_size={config.get('batch_size', 4)}, num_frames={config.get('num_frames', 4)}")
+        print(f"  peak_lr={peak_lr}, warmup={warmup_steps}, grad_clip={grad_clip}")
 
     while step < max_steps:
         dataloader.sampler.set_epoch(epoch) if hasattr(dataloader.sampler, 'set_epoch') else None
@@ -287,7 +296,7 @@ def train_tdv(config: dict, args: argparse.Namespace):
                 raw_model.ema_update()
 
             # Logging
-            if step % log_interval == 0:
+            if step % log_interval == 0 and rank == 0:
                 log_dict = {k: v.item() if isinstance(v, torch.Tensor) else v
                            for k, v in outputs.items() if k != 'loss'}
                 log_dict['loss'] = loss.item()
@@ -303,8 +312,8 @@ def train_tdv(config: dict, args: argparse.Namespace):
                 if use_wandb:
                     wandb.log(log_dict, step=step)
 
-            # Checkpoint
-            if step > 0 and step % save_interval == 0:
+            # Checkpoint (only rank 0)
+            if step > 0 and step % save_interval == 0 and rank == 0:
                 ckpt_path = output_dir / 'latest.pth.tar'
                 torch.save({
                     'step': step,
@@ -333,25 +342,29 @@ def train_tdv(config: dict, args: argparse.Namespace):
 
         epoch += 1
 
-    # -- Final checkpoint
-    final_path = output_dir / 'final.pth.tar'
-    torch.save({
-        'step': step,
-        'epoch': epoch,
-        'model_state_dict': raw_model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'config': config,
-        'loss': loss.item() if 'loss' in locals() else 0.0,
-    }, final_path)
-    print(f"Training complete. Final checkpoint: {final_path}")
+    # -- Final checkpoint (only rank 0)
+    if rank == 0:
+        final_path = output_dir / 'final.pth.tar'
+        torch.save({
+            'step': step,
+            'epoch': epoch,
+            'model_state_dict': raw_model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'config': config,
+            'loss': loss.item() if 'loss' in locals() else 0.0,
+        }, final_path)
+        print(f"Training complete. Final checkpoint: {final_path}")
 
-    # -- Extract frame encoder for downstream detection
-    encoder_path = output_dir / 'tdv_frame_encoder.pth'
-    torch.save(raw_model.get_frame_encoder_state_dict(), encoder_path)
-    print(f"Frame encoder weights saved to: {encoder_path}")
+        # -- Extract frame encoder for downstream detection
+        encoder_path = output_dir / 'tdv_frame_encoder.pth'
+        torch.save(raw_model.get_frame_encoder_state_dict(), encoder_path)
+        print(f"Frame encoder weights saved to: {encoder_path}")
 
     if use_wandb:
         wandb.finish()
+
+    if args.ddp:
+        torch.distributed.destroy_process_group()
 
 
 def main():
@@ -363,6 +376,17 @@ def main():
 
     with open(args.config, 'r') as f:
         config = yaml.safe_load(f)
+
+    # -- Initialize DDP process group BEFORE building DistributedSampler
+    if args.ddp:
+        local_rank = int(os.environ.get('LOCAL_RANK', 0))
+        torch.cuda.set_device(local_rank)
+        torch.distributed.init_process_group(
+            backend='nccl',
+            init_method='env://',
+        )
+        print(f"Initialized DDP: rank={torch.distributed.get_rank()}, "
+              f"world_size={torch.distributed.get_world_size()}")
 
     train_tdv(config, args)
 
