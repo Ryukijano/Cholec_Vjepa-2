@@ -6,7 +6,8 @@ V-JEPA2 + RF-DETR pipeline for **CholecTrack20** surgical tool detection, re-ide
 - **Re-ID**: Direction-aware ReIDHeadV2 (`code/train_reid_v2.py`)
 - **Tracking**: SurgicalTrackerV2 + HOTA eval (`code/tracker_v2.py`, `code/eval_hota.py`)
 
-Full architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+Full architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)  
+**Project plan:** [docs/PLAN.md](docs/PLAN.md) → [GOT-JEPA MOT plan](docs/plans/gyanateet_mot_understanding.md)
 
 ## Quick start (DGX Spark / Linux)
 
