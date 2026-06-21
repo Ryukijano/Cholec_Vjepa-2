@@ -370,6 +370,7 @@ class Dinov2EncoderWrapper(nn.Module):
         freeze: bool = True,
         layer_indices: Optional[List[int]] = None,
         lora: Optional[Dict[str, Any]] = None,
+        encoder_checkpoint: Optional[str] = None,
     ):
         super().__init__()
         self.model_name = model_name
@@ -379,6 +380,35 @@ class Dinov2EncoderWrapper(nn.Module):
 
         print(f"Loading DINOv2 from torch.hub: facebookresearch/dinov2:{model_name}")
         self.encoder = torch.hub.load('facebookresearch/dinov2', model_name)
+
+        # Load TDV-pretrained or custom encoder checkpoint
+        if encoder_checkpoint is not None and Path(encoder_checkpoint).exists():
+            print(f"Loading encoder checkpoint: {encoder_checkpoint}")
+            ckpt = torch.load(encoder_checkpoint, map_location='cpu', weights_only=True)
+            # The checkpoint may be a raw state dict or a dict with 'model_state_dict'
+            if isinstance(ckpt, dict) and 'model_state_dict' in ckpt:
+                # TDV checkpoint — extract frame encoder weights
+                sd = ckpt['model_state_dict']
+                # Keys may be prefixed with 'frame_encoder.encoder.'
+                encoder_sd = {}
+                for k, v in sd.items():
+                    if k.startswith('frame_encoder.encoder.'):
+                        encoder_sd[k.replace('frame_encoder.encoder.', '')] = v
+                if encoder_sd:
+                    msg = self.encoder.load_state_dict(encoder_sd, strict=False)
+                    print(f"  Loaded TDV frame encoder: {len(encoder_sd)} keys")
+                else:
+                    # Try loading as raw encoder state dict
+                    msg = self.encoder.load_state_dict(sd, strict=False)
+                    print(f"  Loaded encoder checkpoint: {len(sd)} keys")
+            else:
+                # Raw state dict
+                msg = self.encoder.load_state_dict(ckpt, strict=False)
+                print(f"  Loaded raw encoder checkpoint: {len(ckpt)} keys")
+            if msg.missing_keys:
+                print(f"  Missing keys: {len(msg.missing_keys)}")
+            if msg.unexpected_keys:
+                print(f"  Unexpected keys: {len(msg.unexpected_keys)}")
 
         if freeze:
             for param in self.encoder.parameters():
@@ -486,7 +516,8 @@ class WorldModel(nn.Module):
                 model_name=model_name,
                 img_size=img_size,
                 freeze=True,
-                layer_indices=layer_indices
+                layer_indices=layer_indices,
+                encoder_checkpoint=encoder_checkpoint,
             )
             _neck_type = 'dinov2'
         else:

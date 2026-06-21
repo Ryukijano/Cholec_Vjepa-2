@@ -185,6 +185,7 @@ class SurgicalMOTSystem(nn.Module):
                 freeze=True,
                 layer_indices=layer_indices,
                 lora=encoder_lora,
+                encoder_checkpoint=encoder_checkpoint,
             )
             neck_encoder_type = 'dinov2' if encoder_dim == 768 else 'dinov2_large'
         else:

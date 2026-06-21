@@ -1,0 +1,110 @@
+# =============================================================================
+# TDV Pretraining Config — Stage 0: Domain Adaptation on Cholec80 SSL Corpus
+# =============================================================================
+#
+# Trains a TDV (Temporal Difference in Vision) model to adapt a DINOv2 ViT-B/14
+# encoder to the surgical domain using the leak-free SSL corpus (73 Cholec80
+# videos, excluding 7 that overlap with CT20 val/test).
+#
+# The output is a domain-adapted frame encoder checkpoint that can be loaded
+# into the detection pipeline (Stage 1) via `encoder_checkpoint` in the
+# detection config.
+#
+# Usage:
+#   python scripts/pretrain_tdv.py --config configs/train_mot/dinov2/tdv-pretrain.yaml
+#
+# For DDP:
+#   torchrun --nproc_per_node=3 scripts/pretrain_tdv.py \
+#     --config configs/train_mot/dinov2/tdv-pretrain.yaml --ddp
+# =============================================================================
+
+# -- Run metadata
+run_name: tdv-cholec-vitb14-stage0
+wandb_project: tdv-cholec
+use_wandb: true
+
+# -- Data
+splits_path: configs/splits/ct20_c80_ssl_splits.yaml
+frames_root: /scratch/kcwp264/datasets_cholec/cholec80/cholec80/frames
+num_frames: 4              # T=4 (3 student frames + 1 teacher target)
+stride: 1                  # consecutive 1fps frames
+img_size: 224              # 224/14 = 16×16 = 256 patches
+batch_size: 8              # per-GPU
+num_workers: 8
+
+# -- Model
+model:
+  backbone_type: dinov2
+  backbone_size: base       # vitb14, 768-dim
+  pretrained: true          # start from DINOv2 pretrained weights
+  unfreeze_frame_encoder: false  # use EMA teacher + frozen student initially
+  img_size: 224
+  patch_size: 14
+
+  # Motion encoder
+  motion_encoder_depth: 4
+  motion_encoder_heads: 12
+  remove_motion_encoder: false
+
+  # EMA teacher
+  use_ema: true
+  ema_momentum: 0.996
+  use_fixed_dino_teacher: false  # EMA copy of student, not fixed DINOv2
+
+  # DINO self-distillation head
+  use_dino_head: true
+  dino_head_prototype_dim: 65536
+  use_separate_ibot_head: false
+
+  # Losses
+  use_mse_loss: true
+  mse_loss_weight: 1.0
+  use_dino_loss: true
+  dino_loss_weight: 1.0
+  use_ibot_loss: false
+  ibot_loss_weight: 1.0
+  use_motion_loss: true
+  motion_loss_weight: 0.1
+
+  # Augmentation
+  use_dino_augmentation: true
+
+  # Rollout
+  rollout_n_frames: 1
+
+  # Misc
+  rgb_diff_threshold: 0.0
+  use_only_cls_token: false
+  log_var_covar: true
+  log_baseline_losses: true
+
+# -- Optimizer
+optimizer:
+  peak_lr: 1.0e-4
+  weight_decay: 0.01
+  beta1: 0.9
+  beta2: 0.999
+
+# -- Training schedule
+max_steps: 50000
+warmup_steps: 1000
+gradient_clip_val: 1.0
+ema_update_interval: 1
+save_interval: 2000
+log_interval: 50
+eval_interval: 2000
+
+# -- L2-SP regularization (anchor to pretrained DINOv2 weights)
+l2sp_weight: 0.0     # set to 1e-3 to enable
+
+# -- Progressive unfreezing (ExPLoRA-style)
+# Uncomment to progressively unfreeze encoder blocks during training
+# unfreeze_schedule:
+#   - {epoch: 0,  num_blocks: 0}   # fully frozen, only train motion encoder + heads
+#   - {epoch: 5,  num_blocks: 2}   # unfreeze last 2 blocks
+#   - {epoch: 10, num_blocks: 4}   # unfreeze last 4 blocks
+#   - {epoch: 15, num_blocks: 6}   # unfreeze last 6 blocks
+#   - {epoch: 20, num_blocks: 12}  # unfreeze all blocks
+
+# -- Output
+output_dir: outputs/tdv_pretrain

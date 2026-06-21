@@ -175,17 +175,24 @@ class DeformableDecoderLayer(nn.Module):
     def forward(
         self,
         tgt: torch.Tensor,          # (B, N_q, C)
-        memory: torch.Tensor,       # (B, H*W, C)
-        memory_spatial: Tuple[int, int],
+        memory: torch.Tensor,       # (B, H*W, C) — concatenated multi-scale (unused if memory_list given)
+        memory_spatial: Tuple[int, int],  # legacy single-scale shape (unused if memory_list given)
         reference_points: torch.Tensor,  # (B, N_q, 2)
         self_attn_mask: Optional[torch.Tensor] = None,
+        memory_list: Optional[List[torch.Tensor]] = None,       # [(B, H_l*W_l, C), ...]
+        spatial_shapes_list: Optional[List[Tuple[int, int]]] = None,  # [(H_l, W_l), ...]
     ) -> torch.Tensor:
         # Self-attention (with optional DN-DETR mask isolating denoising groups)
         tgt2 = self.self_attn(tgt, tgt, tgt, attn_mask=self_attn_mask)[0]
         tgt = self.self_attn_norm(tgt + self.self_attn_dropout(tgt2))
 
-        # Deformable cross-attention
-        tgt2 = self.cross_attn(tgt, reference_points, memory, memory_spatial)
+        # Deformable cross-attention — multi-scale: sum over levels
+        if memory_list is not None and spatial_shapes_list is not None:
+            tgt2 = torch.zeros_like(tgt)
+            for mem, sp in zip(memory_list, spatial_shapes_list):
+                tgt2 = tgt2 + self.cross_attn(tgt, reference_points, mem, sp)
+        else:
+            tgt2 = self.cross_attn(tgt, reference_points, memory, memory_spatial)
         tgt = self.ffn_norm(tgt + tgt2)
 
         # FFN
@@ -528,16 +535,16 @@ class DeformableSurgicalToolDetector(nn.Module):
         else:
             tgt = query_embed
 
-        # Decoder
+        # Decoder — pass per-level memory and spatial shapes for proper
+        # multi-scale deformable attention.  Each decoder layer sums
+        # cross-attention outputs across all scale levels.
         for layer in self.decoder_layers:
-            # For single-scale memory, we just pass the concatenated features
-            # and the spatial shape of the full sequence.  The deformable attn
-            # samples from the 2-D grid by treating the flattened memory as
-            # a single large spatial map — this is slightly approximate for
-            # multi-scale but works fine in practice.
-            # A more exact implementation would pass per-level shapes; we keep
-            # it simple here.
-            tgt = layer(tgt, memory, (1, total_len), reference_points, self_attn_mask=attn_mask)
+            tgt = layer(
+                tgt, memory, (1, total_len), reference_points,
+                self_attn_mask=attn_mask,
+                memory_list=flat_scales,
+                spatial_shapes_list=spatial_shapes,
+            )
 
         # Split clean vs denoising outputs
         if denoising_queries is not None:
