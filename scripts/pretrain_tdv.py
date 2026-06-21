@@ -197,6 +197,7 @@ def train_tdv(config: dict, args: argparse.Namespace):
         ibot_loss_weight=model_cfg.get('ibot_loss_weight', 1.0),
         use_motion_loss=model_cfg.get('use_motion_loss', True),
         motion_loss_weight=model_cfg.get('motion_loss_weight', 0.1),
+        min_embed_diff_per_pixel_diff=model_cfg.get('min_embed_diff_per_pixel_diff', 0.0),
         use_dino_augmentation=model_cfg.get('use_dino_augmentation', True),
         rollout_n_frames=model_cfg.get('rollout_n_frames', 1),
         rgb_diff_threshold=model_cfg.get('rgb_diff_threshold', 0.0),

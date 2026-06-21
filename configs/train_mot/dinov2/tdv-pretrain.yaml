@@ -65,6 +65,7 @@ model:
   ibot_loss_weight: 1.0
   use_motion_loss: true
   motion_loss_weight: 0.1
+  min_embed_diff_per_pixel_diff: 0.5  # minimum embed_diff/pixel_diff ratio; 0.0 disables motion loss
 
   # Augmentation
   use_dino_augmentation: true
