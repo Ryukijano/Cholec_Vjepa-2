@@ -16,3 +16,5 @@ GOT-JEPA surgical MOT on CholecTrack20. Reusable agent workflows for research, t
 **Devin:** Upload `.devin.md` playbooks or create playbooks from them in [Devin settings](https://docs.devin.ai/product-guides/creating-playbooks).
 
 **@Browser:** Attach `@Browser` + `AGENTS.md` and run `/mot-browser-research` for online SOTA comparison mapped to the four-stage pipeline.
+
+**Full skills index:** [CURSOR_AGENT_INDEX.md](CURSOR_AGENT_INDEX.md) — project, personal, and plugin skills available on Spark.
