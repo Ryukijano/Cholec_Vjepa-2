@@ -1,0 +1,117 @@
+# Stage 1 — LoRA-DETR detector on CholecTrack20.
+#
+# Goal: unblock the pipeline by adapting frozen DINOv2 to laparoscopy with LoRA
+# while adding DN-DETR denoising queries + more queries.  Keeps the GOT-JEPA
+# foundation-model story; target mAP@50 >= 0.35 on CT20 val.
+
+meta:
+  stage: stage1_supervised
+  folder: outputs/mot/cholec20-stage1-lora-detect
+  name: cholec20-mot-stage1-lora-detect
+  seed: 42
+  dtype: bfloat16
+
+data:
+  dataset_type: MOTCholecDataset
+  datasets:
+    - data/cholectrack20
+  clip_length: 3
+  img_size: 392
+  batch_size: 16          # lower because ViT-B/14 LoRA + denoising queries add memory
+  num_workers: 8
+  pin_memory: true
+
+model:
+  encoder_type: dinov2
+  model_name: dinov2_vitb14   # sanity: start with vitb14; swap to vits14 for cheap debugging
+  encoder_dim: 768
+  neck_dim: 256
+  layer_indices: [-1]
+  encoder_checkpoint: null
+  use_torch_hub: true
+  # A1: LoRA on DINOv2 attention + MLP layers; base weights stay frozen
+  encoder_lora:
+    enable: true
+    rank: 16
+    alpha: 32
+    dropout: 0.05
+    target_modules: ['qkv', 'proj', 'fc1', 'fc2']
+    start_block: 0
+    end_block: null
+
+predictor:
+  dim: 256
+  num_heads: 8
+  num_encoder_layers: 4
+  num_decoder_layers: 2
+  dim_feedforward: 1024
+  dropout: 0.1
+
+detr:
+  use_deformable_detr: true
+  num_tools: 7
+  num_queries: 48         # A3: more queries for stable matching
+  num_decoder_layers: 6
+  nheads: 8
+  n_points: 4
+  dropout: 0.1
+  class_weight: 1.0
+  bbox_weight: 5.0
+  giou_weight: 2.0
+  focal_alpha: 0.25
+  focal_gamma: 2.0
+  # A2: DN-DETR denoising queries
+  use_denoising: true
+  num_denoising_groups: 5
+  num_noise_per_group: 4
+  label_noise_prob: 0.2
+  box_noise_scale: 0.4
+  denoising_weight: 1.0
+
+reid:
+  embedding_dim: 256
+  supcon_weight: 1.0
+  supcon_temperature: 0.07
+  cross_consistency_weight: 0.0
+  dropout: 0.15
+
+tracker:
+  birth_score: 0.6
+  min_hits: 3
+  max_age: 30
+  reentry_ttl: 300
+  cost_threshold: 0.7
+  infer_score_threshold: 0.3
+
+losses:
+  detector_only: true
+  track_weight: 0.0
+  track_cls_weight: 1.0
+  track_giou_weight: 1.0
+  reid_weight: 0.0
+
+stage_flags:
+  use_geometry: false
+  use_occusolver: false
+  use_depth: false
+
+optimization:
+  lr: 2.0e-4
+  lora_lr: 1.0e-3      # A5: higher LR for the small LoRA matrices
+  weight_decay: 1.0e-2
+  epochs: 100
+  min_lr: 1.0e-6
+  warmup_epochs: 5
+  gradient_clip_norm: 1.0
+  log_freq: 10
+
+wandb:
+  enabled: true
+  project: surgical-mot
+  entity: null
+  name: stage1-lora-detect-gb10-1gpu
+  group: cholec20-stage1
+  job_type: train
+  tags: ["stage1", "lora", "denoising", "gb10", "1gpu"]
+  watch: gradients
+  watch_freq: 100

@@ -1,0 +1,100 @@
+# =============================================================================
+# Stage 2 — GOT-JEPA SSL predictor pretraining with W&B tracking.
+# =============================================================================
+#
+# Prerequisites:
+#   1. Stage 1 supervised checkpoint at ``meta.load_checkpoint``.
+#   2. Unified SSL corpus built by:
+#        python -m scripts.build_ssl_corpus \
+#          --stage1_config configs/train_mot/dinov2/cholec20-mot-stage1-supervised.yaml \
+#          --stage1_checkpoint outputs/mot/cholec20-stage1-supervised/best.pth.tar \
+#          --out_root data/ssl_corpus
+#
+# This config is identical to cholec80-ct20-stage2-jepa-pretrain.yaml
+# but with W&B experiment tracking enabled.
+# =============================================================================
+
+meta:
+  stage: stage2_jepa
+  folder: outputs/mot/cholec80-ct20-stage2-jepa-pretrain-wandb
+  name: cholec80-ct20-stage2-jepa-pretrain-wandb
+  seed: 42
+  dtype: bfloat16
+  load_checkpoint: outputs/mot/cholec20-stage1-supervised/best.pth.tar
+
+data:
+  dataset_type: MOTCholecDataset
+  datasets:
+    - data/ssl_corpus
+  clip_length: 3
+  img_size: 392
+  batch_size: 4
+  num_workers: 6
+  pin_memory: true
+
+model:
+  encoder_type: dinov2
+  model_name: dinov2_vits14
+  encoder_dim: 384
+  neck_dim: 256
+  layer_indices: [-1]
+  use_torch_hub: true
+
+predictor:
+  dim: 256
+  num_heads: 8
+  num_encoder_layers: 4
+  num_decoder_layers: 2
+  dim_feedforward: 1024
+  dropout: 0.1
+
+detr:
+  use_deformable_detr: true
+  num_tools: 7
+  num_queries: 16
+  num_decoder_layers: 6
+  nheads: 8
+  n_points: 4
+reid:
+  embedding_dim: 256
+tracker:
+  birth_score: 0.6
+
+augmentation:
+  smoke_p: 0.45
+  blood_p: 0.25
+  spec_p:  0.35
+  blur_p:  0.35
+  jitter_p: 0.5
+  cutout_p: 0.25
+
+losses:
+  jepa_inv_weight: 1.0
+  jepa_cov_weight: 0.5
+
+stage_flags:
+  use_geometry: false
+  use_occusolver: true
+
+optimization:
+  lr: 1.5e-3              # linear-scaled for 3 GPUs (base 5e-4 × 3)
+  weight_decay: 1.0e-2
+  epochs: 30
+  min_lr: 1.0e-6
+  warmup_epochs: 1
+  gradient_clip_norm: 1.0
+  log_freq: 20
+
+# ------------------------------------------------------------------
+# W&B experiment tracking
+# ------------------------------------------------------------------
+wandb:
+  enabled: true
+  project: surgical-mot
+  entity: null
+  name: my-stage2-run
+  group: cholec80-ssl
+  job_type: train
+  tags: ["stage2", "ssl"]
+  watch: gradients
+  watch_freq: 100

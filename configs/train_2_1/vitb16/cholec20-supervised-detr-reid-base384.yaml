@@ -1,0 +1,125 @@
+app: vjepa_2_1_supervised
+folder: /mnt/scratch/scssali/dino_wm/vjepa_outputs/cholec20/supervised_detr_reid_base384
+
+meta:
+  folder: /mnt/scratch/scssali/dino_wm/vjepa_outputs/cholec20/supervised_detr_reid_base384
+  read_checkpoint: /mnt/scratch/scssali/dino_wm/vjepa_outputs/cholec80/base_384px_16f_highutil/latest.pth.tar
+  load_checkpoint: false
+  seed: 0
+  project: vjepa2-supervised
+  entity: default
+  name: cholec20-detr-reid-base384
+
+data:
+  dataset_type: VideoDataset
+  datasets:
+    - /mnt/scratch/scssali/cholec80/cholec80/frames
+  dataset_fpcs:
+    - 16
+  crop_size: 384
+  patch_size: 16
+  tubelet_size: 2
+  fps: 4
+  batch_size: 8
+  num_workers: 4
+  pin_mem: true
+  persistent_workers: false
+  include_videos:
+    - video02
+    - video04
+    - video05
+    - video08
+    - video09
+    - video10
+    - video11
+    - video13
+    - video14
+    - video15
+    - video16
+    - video17
+    - video18
+    - video19
+    - video20
+    - video21
+    - video22
+    - video23
+    - video24
+    - video26
+  exclude_videos:
+    - video01
+    - video06
+    - video07
+    - video12
+    - video25
+    - video30
+    - video39
+
+data_aug:
+  auto_augment: false
+  motion_shift: false
+  random_resize_aspect_ratio: [0.75, 1.35]
+  random_resize_scale: [0.3, 1.0]
+  reprob: 0.0
+
+model:
+  model_name: vit_base
+  pred_depth: 12
+  pred_num_heads: 12
+  pred_embed_dim: 384
+  use_mask_tokens: true
+  zero_init_mask_tokens: true
+  uniform_power: true
+  use_activation_checkpointing: false
+  use_rope: true
+  interpolate_rope: true
+  modality_embedding: true
+  has_cls_first: false
+  n_registers: 0
+  n_registers_predictor: 0
+  img_temporal_dim_size: 1
+  is_causal: false
+  pred_is_causal: false
+
+optimization:
+  lr: 1.0e-4
+  weight_decay: 1.0e-2
+  epochs: 10
+  ipe: 200
+  log_freq: 10
+  gradient_accumulation_steps: 4
+  gradient_clip_norm: 1.0
+  use_mixed_precision: true
+
+supervised:
+  detr_head:
+    enabled: true
+    num_tools: 7
+    num_queries: 16
+    nheads: 8
+    num_decoder_layers: 5
+    dropout: 0.15
+    class_weight: 1.0
+    bbox_weight: 0.0
+
+  reid_head:
+    enabled: true
+    embedding_dim: 256
+    num_classes: 7
+    pooling: mean
+    normalize_embeddings: true
+    dropout: 0.15
+    weight: 1.0
+
+  curriculum:
+    reid_weight_start: 0.2
+    reid_weight_end: 1.0
+    gradnorm_enabled: false
+    gradnorm_trigger_ratio: 3.0
+    gradnorm_trigger_patience_epochs: 2
+
+  encoder:
+    trainable: false
+
+  annotation_dir: /mnt/scratch/scssali/cholec80/cholec80/tool_annotations
+
+  pretrained_checkpoint: /mnt/scratch/scssali/dino_wm/vjepa_outputs/cholec80/base_384px_16f_highutil/latest.pth.tar

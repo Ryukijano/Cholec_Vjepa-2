@@ -1,0 +1,239 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 820" width="1200" height="820" font-family="Inter, Segoe UI, sans-serif">
+  <!-- Background -->
+  <rect width="1200" height="820" fill="#0f1117" rx="12"/>
+
+  <!-- Title -->
+  <text x="600" y="38" text-anchor="middle" fill="#e2e8f0" font-size="20" font-weight="700" letter-spacing="1">DINO-WM Surgical Tool Tracking — Architecture</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- COLUMN 1 — ENCODER -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+
+  <!-- Encoder box -->
+  <rect x="30" y="60" width="190" height="380" rx="10" fill="#1e2130" stroke="#4f5882" stroke-width="1.5"/>
+  <text x="125" y="83" text-anchor="middle" fill="#a5b4fc" font-size="12" font-weight="700">FROZEN ENCODER</text>
+
+  <!-- DINOv2 branch -->
+  <rect x="48" y="95" width="154" height="72" rx="7" fill="#2d3561" stroke="#6366f1" stroke-width="1.2"/>
+  <text x="125" y="114" text-anchor="middle" fill="#c7d2fe" font-size="11" font-weight="600">DINOv2 ViT-B/14</text>
+  <text x="125" y="130" text-anchor="middle" fill="#94a3b8" font-size="10">Input: (B,C,H,W)</text>
+  <text x="125" y="146" text-anchor="middle" fill="#94a3b8" font-size="10">Output: (B,T,784,768)</text>
+  <text x="125" y="160" text-anchor="middle" fill="#94a3b8" font-size="10">patch=14, spatial=28×28</text>
+
+  <text x="125" y="186" text-anchor="middle" fill="#64748b" font-size="10" font-style="italic">— OR —</text>
+
+  <!-- VJEPA branch -->
+  <rect x="48" y="195" width="154" height="72" rx="7" fill="#1e3a2d" stroke="#22c55e" stroke-width="1.2"/>
+  <text x="125" y="214" text-anchor="middle" fill="#86efac" font-size="11" font-weight="600">V-JEPA 2.1 ViT-B</text>
+  <text x="125" y="230" text-anchor="middle" fill="#94a3b8" font-size="10">Input: (B,C,T,H,W)</text>
+  <text x="125" y="246" text-anchor="middle" fill="#94a3b8" font-size="10">Output: (B,8,576,768)</text>
+  <text x="125" y="260" text-anchor="middle" fill="#94a3b8" font-size="10">tubelet=2, spatial=24×24</text>
+
+  <!-- Hierarchical fusion (optional) -->
+  <rect x="48" y="285" width="154" height="50" rx="7" fill="#1e2940" stroke="#38bdf8" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="125" y="304" text-anchor="middle" fill="#7dd3fc" font-size="10" font-weight="600">Hierarchical Fusion Neck</text>
+  <text x="125" y="319" text-anchor="middle" fill="#64748b" font-size="9">(optional, multi-layer)</text>
+  <text x="125" y="332" text-anchor="middle" fill="#64748b" font-size="9">→ (B,T,N,C)</text>
+
+  <!-- Reality seq label -->
+  <text x="125" y="360" text-anchor="middle" fill="#94a3b8" font-size="10" font-weight="500">reality_seq: (B,T,N,C)</text>
+  <line x1="125" y1="365" x2="125" y2="430" stroke="#64748b" stroke-width="1" stroke-dasharray="3,3"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- COLUMN 2 — ENCODER NECK -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+
+  <!-- Arrow encoder → neck -->
+  <line x1="220" y1="250" x2="270" y2="250" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- EncoderNeck box -->
+  <rect x="270" y="60" width="190" height="380" rx="10" fill="#1e2130" stroke="#4f5882" stroke-width="1.5"/>
+  <text x="365" y="83" text-anchor="middle" fill="#a5b4fc" font-size="12" font-weight="700">ENCODER NECK</text>
+
+  <!-- SimpleFPN -->
+  <rect x="288" y="95" width="154" height="110" rx="7" fill="#2d3561" stroke="#6366f1" stroke-width="1.2"/>
+  <text x="365" y="114" text-anchor="middle" fill="#c7d2fe" font-size="11" font-weight="600">SimpleFPN (DINOv2)</text>
+  <text x="365" y="130" text-anchor="middle" fill="#94a3b8" font-size="9">lateral: Conv2d(768→256)</text>
+  <text x="365" y="144" text-anchor="middle" fill="#6366f1" font-size="9">P2 56×56  (↑2×)</text>
+  <text x="365" y="158" text-anchor="middle" fill="#818cf8" font-size="9">P3 28×28  (identity)</text>
+  <text x="365" y="172" text-anchor="middle" fill="#6366f1" font-size="9">P4 14×14  (↓2×)</text>
+  <text x="365" y="186" text-anchor="middle" fill="#6366f1" font-size="9">P5  7×7   (↓4×)</text>
+
+  <text x="365" y="218" text-anchor="middle" fill="#64748b" font-size="10" font-style="italic">— OR —</text>
+
+  <!-- VJEPANeck -->
+  <rect x="288" y="228" width="154" height="90" rx="7" fill="#1e3a2d" stroke="#22c55e" stroke-width="1.2"/>
+  <text x="365" y="247" text-anchor="middle" fill="#86efac" font-size="11" font-weight="600">VJEPANeck (V-JEPA)</text>
+  <text x="365" y="263" text-anchor="middle" fill="#94a3b8" font-size="9">temporal collapse (mean/last)</text>
+  <text x="365" y="277" text-anchor="middle" fill="#94a3b8" font-size="9">proj: Conv2d(768→256)</text>
+  <text x="365" y="291" text-anchor="middle" fill="#22c55e" font-size="9">P3 24×24  (+ P4 12×12 opt)</text>
+  <text x="365" y="307" text-anchor="middle" fill="#94a3b8" font-size="9">spatial_map: (B,768,H,W)</text>
+
+  <!-- neck outputs -->
+  <text x="365" y="340" text-anchor="middle" fill="#94a3b8" font-size="10">detection_scales</text>
+  <text x="365" y="354" text-anchor="middle" fill="#94a3b8" font-size="10">flat tokens (B,ΣHW,256)</text>
+  <text x="365" y="368" text-anchor="middle" fill="#94a3b8" font-size="10">spatial_map (B,256,H,W)</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- COLUMN 3 — PREDICTOR -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+
+  <!-- Arrow encoder → predictor -->
+  <line x1="220" y1="170" x2="500" y2="530" stroke="#f59e0b" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrY)"/>
+
+  <!-- Predictor box -->
+  <rect x="500" y="60" width="190" height="200" rx="10" fill="#1e2130" stroke="#4f5882" stroke-width="1.5"/>
+  <text x="595" y="83" text-anchor="middle" fill="#a5b4fc" font-size="12" font-weight="700">PREDICTOR</text>
+
+  <rect x="518" y="95" width="154" height="140" rx="7" fill="#2a2010" stroke="#f59e0b" stroke-width="1.2"/>
+  <text x="595" y="116" text-anchor="middle" fill="#fcd34d" font-size="11" font-weight="600">MultiScaleTemporalPredictor</text>
+  <text x="595" y="133" text-anchor="middle" fill="#94a3b8" font-size="9">Transformer (L=8, H=12, D=768)</text>
+  <text x="595" y="149" text-anchor="middle" fill="#94a3b8" font-size="9">Input: reality_seq (B,T,N,C)</text>
+  <text x="595" y="165" text-anchor="middle" fill="#fbbf24" font-size="9">horizon_1 → (B,N,768)  [phantom]</text>
+  <text x="595" y="181" text-anchor="middle" fill="#f59e0b" font-size="9">horizon_4 → (B,N,768)</text>
+  <text x="595" y="197" text-anchor="middle" fill="#f59e0b" font-size="9">horizon_16 → (B,N,768)</text>
+  <text x="595" y="216" text-anchor="middle" fill="#64748b" font-size="9">teacher-forced | rollout</text>
+
+  <!-- World Model Loss -->
+  <rect x="500" y="280" width="190" height="80" rx="10" fill="#1e2130" stroke="#ef4444" stroke-width="1.5"/>
+  <text x="595" y="300" text-anchor="middle" fill="#fca5a5" font-size="11" font-weight="700">WorldModelLoss</text>
+  <text x="595" y="318" text-anchor="middle" fill="#94a3b8" font-size="9">MSE(normalize=True) per horizon</text>
+  <text x="595" y="333" text-anchor="middle" fill="#94a3b8" font-size="9">+ rollout_weight × RolloutMSE</text>
+  <text x="595" y="348" text-anchor="middle" fill="#64748b" font-size="9">target: future frame encoder feats</text>
+
+  <!-- arrow predictor → WM loss -->
+  <line x1="595" y1="235" x2="595" y2="280" stroke="#ef4444" stroke-width="1.2" marker-end="url(#arrR)"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- COLUMN 3b — DETR -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+
+  <!-- Arrow neck → DETR -->
+  <line x1="460" y1="200" x2="500" y2="440" stroke="#818cf8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- phantom arrow predictor → DETR Tri-Attention -->
+  <line x1="595" y1="165" x2="595" y2="423" stroke="#f59e0b" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrY)"/>
+
+  <!-- DETR box -->
+  <rect x="500" y="390" width="190" height="200" rx="10" fill="#1e2130" stroke="#4f5882" stroke-width="1.5"/>
+  <text x="595" y="413" text-anchor="middle" fill="#a5b4fc" font-size="12" font-weight="700">DETR HEAD</text>
+
+  <rect x="518" y="423" width="154" height="152" rx="7" fill="#1e2040" stroke="#6366f1" stroke-width="1.2"/>
+  <text x="595" y="441" text-anchor="middle" fill="#c7d2fe" font-size="11" font-weight="600">SurgicalToolDetector</text>
+  <text x="595" y="457" text-anchor="middle" fill="#fcd34d" font-size="9" font-weight="600">Tri-Attention Fusion</text>
+  <text x="595" y="471" text-anchor="middle" fill="#94a3b8" font-size="9">(Queries ↔ Real ↔ Phantom)</text>
+  <text x="595" y="487" text-anchor="middle" fill="#94a3b8" font-size="9">class_logits: (B,16,7)</text>
+  <text x="595" y="501" text-anchor="middle" fill="#94a3b8" font-size="9">pred_boxes: (B,16,4) cxcywh</text>
+  <line x1="530" y1="512" x2="660" y2="512" stroke="#374151" stroke-width="0.8"/>
+  <text x="595" y="527" text-anchor="middle" fill="#fca5a5" font-size="9" font-weight="600">SetCriterion (Focal+L1+GIoU)</text>
+  <text x="595" y="541" text-anchor="middle" fill="#94a3b8" font-size="9">Hungarian: C_focal+C_L1+C_GIoU</text>
+  <text x="595" y="557" text-anchor="middle" fill="#94a3b8" font-size="9">α=0.25  γ=2.0  λ_bbox=5  λ_giou=2</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- COLUMN 4 — RoIAlign -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+
+  <!-- Arrow neck.P3 → RoIAlign (real) -->
+  <line x1="460" y1="310" x2="730" y2="490" stroke="#22c55e" stroke-width="1.3" marker-end="url(#arrG)"/>
+  <!-- Arrow DETR boxes → RoIAlign -->
+  <line x1="690" y1="490" x2="730" y2="490" stroke="#818cf8" stroke-width="1.3" marker-end="url(#arr)"/>
+
+  <!-- RoIAlign box -->
+  <rect x="730" y="440" width="190" height="150" rx="10" fill="#1e2130" stroke="#4f5882" stroke-width="1.5"/>
+  <text x="825" y="463" text-anchor="middle" fill="#a5b4fc" font-size="12" font-weight="700">RoIAlign</text>
+
+  <rect x="748" y="473" width="154" height="105" rx="7" fill="#0f2a1a" stroke="#22c55e" stroke-width="1.2"/>
+  <text x="825" y="492" text-anchor="middle" fill="#86efac" font-size="11" font-weight="600">RoIAlignExtractor</text>
+  <text x="825" y="508" text-anchor="middle" fill="#94a3b8" font-size="9">real_map: (B,256,H,W)</text>
+  <text x="825" y="522" text-anchor="middle" fill="#f59e0b" font-size="9">phantom_map: (B,256,H,W)</text>
+  <text x="825" y="536" text-anchor="middle" fill="#94a3b8" font-size="9">boxes_cxcywh: (B,Q,4)</text>
+  <text x="825" y="550" text-anchor="middle" fill="#94a3b8" font-size="9">output_size=7×7 → pool</text>
+  <text x="825" y="564" text-anchor="middle" fill="#86efac" font-size="9">roi_real, roi_phantom: (B×Q,256)</text>
+
+  <!-- phantom arrow predictor → phantom_map -->
+  <line x1="595" y1="165" x2="825" y2="473" stroke="#f59e0b" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrY)"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- COLUMN 5 — ReID -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+
+  <!-- Arrow RoIAlign → ReID -->
+  <line x1="920" y1="515" x2="960" y2="515" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrG)"/>
+
+  <!-- ReID box -->
+  <rect x="960" y="440" width="210" height="220" rx="10" fill="#1e2130" stroke="#4f5882" stroke-width="1.5"/>
+  <text x="1065" y="463" text-anchor="middle" fill="#a5b4fc" font-size="12" font-weight="700">ReID HEAD</text>
+
+  <rect x="978" y="473" width="174" height="174" rx="7" fill="#1a0a2a" stroke="#a855f7" stroke-width="1.2"/>
+  <text x="1065" y="492" text-anchor="middle" fill="#d8b4fe" font-size="11" font-weight="600">ReidHead (SupCon)</text>
+  <text x="1065" y="508" text-anchor="middle" fill="#94a3b8" font-size="9">pooling='none' (RoIAlign input)</text>
+  <text x="1065" y="522" text-anchor="middle" fill="#94a3b8" font-size="9">Linear(256→256) + BN + Dropout</text>
+  <text x="1065" y="536" text-anchor="middle" fill="#d8b4fe" font-size="9">L2-normalise → embeddings</text>
+  <line x1="990" y1="545" x2="1140" y2="545" stroke="#374151" stroke-width="0.8"/>
+  <text x="1065" y="560" text-anchor="middle" fill="#fca5a5" font-size="9" font-weight="600">SupConLoss  τ=0.07</text>
+  <text x="1065" y="575" text-anchor="middle" fill="#94a3b8" font-size="9">joint: [real ‖ phantom] (2N,D)</text>
+  <text x="1065" y="589" text-anchor="middle" fill="#94a3b8" font-size="9">weights: detection_scores (DFL)</text>
+  <line x1="990" y1="598" x2="1140" y2="598" stroke="#374151" stroke-width="0.8"/>
+  <text x="1065" y="613" text-anchor="middle" fill="#94a3b8" font-size="9">cross-consistency cosine loss</text>
+  <text x="1065" y="628" text-anchor="middle" fill="#94a3b8" font-size="9">(real ↔ phantom alignment)</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- TOTAL LOSS BOX -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <rect x="30" y="680" width="1140" height="120" rx="10" fill="#1a0000" stroke="#ef4444" stroke-width="1.5"/>
+  <text x="600" y="703" text-anchor="middle" fill="#fca5a5" font-size="13" font-weight="700">Total Loss = L_detection + λ_reid × L_reid + L_world_model</text>
+  <text x="220" y="730" text-anchor="middle" fill="#f87171" font-size="11" font-weight="600">L_detection</text>
+  <text x="220" y="748" text-anchor="middle" fill="#94a3b8" font-size="10">λ_cls × FocalLoss</text>
+  <text x="220" y="762" text-anchor="middle" fill="#94a3b8" font-size="10">+ λ_bbox × L1</text>
+  <text x="220" y="776" text-anchor="middle" fill="#94a3b8" font-size="10">+ λ_giou × (1−GIoU)</text>
+  <text x="600" y="730" text-anchor="middle" fill="#c084fc" font-size="11" font-weight="600">L_reid</text>
+  <text x="600" y="748" text-anchor="middle" fill="#94a3b8" font-size="10">λ_supcon × SupCon(real+phantom)</text>
+  <text x="600" y="762" text-anchor="middle" fill="#94a3b8" font-size="10">+ λ_cross × CrossConsistency</text>
+  <text x="980" y="730" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="600">L_world_model</text>
+  <text x="980" y="748" text-anchor="middle" fill="#94a3b8" font-size="10">Σ_h λ_h × MSE(pred_h, target_h)</text>
+  <text x="980" y="762" text-anchor="middle" fill="#94a3b8" font-size="10">+ λ_rollout × MSE(rollout, target)</text>
+
+  <!-- vertical dividers -->
+  <line x1="400" y1="690" x2="400" y2="794" stroke="#374151" stroke-width="0.8"/>
+  <line x1="790" y1="690" x2="790" y2="794" stroke="#374151" stroke-width="0.8"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- ARROWHEAD MARKERS -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#818cf8"/>
+    </marker>
+    <marker id="arrY" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrG" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#22c55e"/>
+    </marker>
+    <marker id="arrR" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#ef4444"/>
+    </marker>
+  </defs>
+
+  <!-- Legend -->
+  <rect x="30" y="462" width="220" height="200" rx="8" fill="#111827" stroke="#374151" stroke-width="1"/>
+  <text x="140" y="482" text-anchor="middle" fill="#94a3b8" font-size="10" font-weight="600">LEGEND</text>
+  <rect x="42" y="492" width="14" height="10" rx="2" fill="#2d3561" stroke="#6366f1" stroke-width="1"/>
+  <text x="62" y="502" fill="#94a3b8" font-size="9">DINOv2 path</text>
+  <rect x="42" y="510" width="14" height="10" rx="2" fill="#1e3a2d" stroke="#22c55e" stroke-width="1"/>
+  <text x="62" y="520" fill="#94a3b8" font-size="9">V-JEPA path</text>
+  <rect x="42" y="528" width="14" height="10" rx="2" fill="#2a2010" stroke="#f59e0b" stroke-width="1"/>
+  <text x="62" y="538" fill="#94a3b8" font-size="9">Phantom / prediction</text>
+  <rect x="42" y="546" width="14" height="10" rx="2" fill="#1a0a2a" stroke="#a855f7" stroke-width="1"/>
+  <text x="62" y="556" fill="#94a3b8" font-size="9">ReID / SupCon</text>
+  <rect x="42" y="564" width="14" height="10" rx="2" fill="#1a0000" stroke="#ef4444" stroke-width="1"/>
+  <text x="62" y="574" fill="#94a3b8" font-size="9">Loss function</text>
+  <line x1="42" y1="587" x2="56" y2="587" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="62" y="591" fill="#94a3b8" font-size="9">Feature flow</text>
+  <line x1="42" y1="603" x2="56" y2="603" stroke="#f59e0b" stroke-width="1.2" stroke-dasharray="4,2"/>
+  <text x="62" y="607" fill="#94a3b8" font-size="9">Phantom flow (no grad)</text>
+  <line x1="42" y1="619" x2="56" y2="619" stroke="#38bdf8" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="62" y="623" fill="#94a3b8" font-size="9">Optional module</text>
+  <text x="42" y="647" fill="#64748b" font-size="8">neck_dim=256  encoder_dim=768</text>
+  <text x="42" y="660" fill="#64748b" font-size="8">Q=16 queries  T=8 (VJEPA) / 1 (DINO)</text>
+</svg>

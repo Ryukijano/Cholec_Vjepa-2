@@ -1,0 +1,32 @@
+# Data and artifacts (local only)
+data/
+outputs/
+wandb/
+logs/
+*.pth.tar
+*.pt
+*.ckpt
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# IDE / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Cursor machine-local state
+.cursor/hooks/
+
+# Large vendored / optional trees (clone separately if needed)
+tips/
