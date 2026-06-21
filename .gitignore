@@ -29,7 +29,7 @@ tb/
 # Jupyter
 .ipynb_checkpoints/
 
-# Checkpoints outside outputs/ (use LFS under outputs/ only)
+# Checkpoints outside LFS dirs (use LFS under outputs/ and weights/)
 *.pth
 *.pt
 !outputs/**/*.pth
@@ -37,12 +37,18 @@ tb/
 !outputs/**/*.pth.tar
 !outputs/**/*.safetensors
 !outputs/**/*.ckpt
+!weights/**/*.pth
+!weights/**/*.pth.tar
 
-# Allow outputs tree (LFS-tracked weights + README)
+# Allow LFS trees
 outputs/**
 !outputs/README.md
 !outputs/**/
-!outputs/**/.gitkeep
+!outputs/**/*
+weights/**
+!weights/README.md
+!weights/**/
+!weights/**/*
 
 # Large media (keep small plots in repo)
 *.mp4
