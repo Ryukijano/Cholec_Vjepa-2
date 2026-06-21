@@ -1,66 +1,41 @@
-# Cursor agent skills index
+# Cursor agent index
 
-Reference for agents working on Gyanateet_tracking. **Project skills** are in-repo under `.cursor/skills/`. **Personal** and **plugin** skills are installed on the machine (`~/.cursor/`).
+Skills, commands, and workflows for Gyanateet_tracking. Cross-project skills from [Ryukijano/agent-skills](https://github.com/Ryukijano/agent-skills).
 
-## Project skills (in this repo)
+## Project skills (`.cursor/skills/`)
 
-| Skill | Path | Use when |
-|-------|------|----------|
-| `mot-browser-research` | `.cursor/skills/mot-browser-research/` | `@Browser`, online SOTA, strategic direction |
-| `mot-training-workflow` | `.cursor/skills/mot-training-workflow/` | Train stages 1–4, resume, eval |
-| `mot-repo-orientation` | `.cursor/skills/mot-repo-orientation/` | Understand repo layout and pipeline |
+| Skill | Trigger |
+|-------|---------|
+| `mot-browser-research` | @Browser, SOTA, strategic direction |
+| `mot-training-workflow` | Train/resume stages 1–4 |
+| `mot-repo-orientation` | Repo map and pipeline |
+| `aire-slurm-submit` | AIRE Slurm submit/monitor |
+| `conda-env-setup` | Conda + CUDA on AIRE |
+| `debug-pytorch-gpu` | GPU OOM, DDP, NCCL |
+| `git-branch-workflow` | Branches, commits, PRs |
+| `lora-finetune` | DINOv2/ViT LoRA |
+| `surgical-mot-eval` | CholecTrack20 HOTA/mAP |
+| `tdv-pretrain` | TDV surgical video SSL |
+| `wandb-experiment` | W&B on HPC |
 
-## Slash commands (in this repo)
+## Slash commands (`.cursor/commands/`)
 
-| Command | File |
-|---------|------|
-| `/mot-browser-research` | `.cursor/commands/mot-browser-research.md` |
-| `/mot-train-eval` | `.cursor/commands/mot-train-eval.md` |
-| `/mot-hota-eval` | `.cursor/commands/mot-hota-eval.md` |
+**MOT:** `/mot-browser-research`, `/mot-train-eval`, `/mot-hota-eval`
 
-## Devin playbooks (in this repo)
+**Cross-project:** `/submit-gpu-job`, `/pretrain-and-evaluate`, `/debug-training`, `/code-review`, `/address-pr-comments`, `/checkpoint-to-deployment`, `/setup-ml-project`
 
-See [README.md](README.md) — `workflows/devin/*.devin.md` with macros `!mot-browser-research`, `!mot-train-eval`, `!mot-hota-eval`.
+## Devin playbooks (`workflows/devin/`)
 
-## Personal skills (`~/.cursor/skills/` → `~/.agents/skills/`)
+- `mot-browser-research.devin.md` → `!mot-browser-research`
+- `mot-train-eval.devin.md` → `!mot-train-eval`
+- `mot-hota-eval.devin.md` → `!mot-hota-eval`
 
-| Skill | Use when |
-|-------|----------|
-| `iterative-test-loop` | Change → test → diagnose until green |
-| `impact-aware-testing` | Find tests for changed files |
-| `experiment-protocol` | Pre-register ablations / benchmarks |
-| `explore-sota` | arXiv / Semantic Scholar triage |
-| `digest-paper` | PDF → synthesis + BibTeX |
-| `hypothesis-canvas` | Research hypothesis refinement |
-| `systematic-debug` | Evidence-driven debugging |
-| `tdd-red-green` | Strict red-green TDD |
-| `safe-refactor` | Small steps + characterization tests |
-| `ship-pr` / `babysit-pr` / `split-to-prs` | PR lifecycle |
-| `review-bugbot` / `review-security` | Pre-merge review |
-| `ci-watcher` | Watch PR checks |
-| `claim-verification` / `adversarial-review` | Draft and paper review |
-| `repro-bundle` / `prisma-systematic-review` | Repro bundles, systematic reviews |
-| `loop` | Recurring `/loop` execution |
+## Personal skills (`~/.cursor/skills/`)
 
-## Plugin skills (installed via Cursor marketplace)
+`iterative-test-loop`, `impact-aware-testing`, `explore-sota`, `digest-paper`, `ship-pr`, `babysit-pr`, `systematic-debug`, and others — see canvas `mot-skills-workflows.canvas.tsx`.
 
-| Plugin | Key skills for this repo |
-|--------|--------------------------|
-| **parallel** | `parallel-web-search` (default @Browser research), `parallel-deep-research`, `parallel-web-extract` |
-| **cursor-team-kit** | `verify-this`, `fix-ci`, `workflow-from-chats`, `run-smoke-tests`, `review-and-ship` |
-| **huggingface-skills** | `huggingface-vision-trainer`, `hf-cli`, `huggingface-datasets`, `huggingface-papers` |
-| **cursor built-ins** | `canvas`, `create-skill`, `create-rule`, `review-bugbot` |
+## Quick paths
 
-## Parent AIMSgeneral commands (Cosmos / ESD)
-
-In `/home/aimsgroupuol/AIMSgeneral/.cursor/commands/`: `/cosmos-verify`, `/cosmos-spark-kernels`, `/esd-t2v`, `/esd-forward-dynamics`, `/lap-t2v`. Playbooks: `AIMSgeneral/workflows/devin/`.
-
-## @Browser quick start
-
-```
-@Browser @AGENTS.md /mot-browser-research
-
-Search online for [topic]. Map to our four-stage MOT pipeline. Cite sources.
-```
-
-Guardrails: stay GOT-JEPA + OccuSolver; VLA-JEPA is robot policies (not MOT); desmoking is optional ablation only.
+- Train: `bash scripts/train_stage1_ddp_3gpu.sh` (Spark) or `sbatch jobs/*.slurm` (AIRE)
+- Eval: `python scripts/eval_checkpoint.py --mot-eval --stratify-smoke`
+- Tests: `pytest tests/test_mot_smoke.py -q`
