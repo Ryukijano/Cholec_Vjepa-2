@@ -64,11 +64,29 @@ See [readme.md](readme.md) for CUDA 12.1 + PowerShell commands.
 ## Repo layout
 
 ```
-code/           Training, tracker, eval scripts
-docs/           Architecture + upload notes
-outputs/        LFS checkpoints (see outputs/README.md)
-scripts/        setup_lfs.sh, Spark helpers
+code/              V-JEPA2 / RF-DETR SurgiTrack++ scripts
+core_app/          GOT-JEPA MOT pipeline (DINOv2 + Deformable DETR)
+configs/train_mot/ Stage 1–4 YAML configs (dinov2/)
+dinov2/            Meta DINOv2 vendor (facebookresearch/dinov2)
+scripts/got_jepa/  MOT training + eval shell runners
+weights/dinov2/    DINOv2 ImageNet pretrain (LFS)
+outputs/           LFS checkpoints (V-JEPA2 + MOT)
+docs/              Architecture docs
 ```
+
+### GOT-JEPA MOT training (Spark)
+
+```bash
+export XFORMERS_DISABLED=1
+export CHOLECTRACK20_ROOT=/home/aimsgroupuol/AIMSgeneral/Gyanateet_tracking/data/cholectrack20
+ln -sf "$CHOLECTRACK20_ROOT" cholec_dataset
+
+python -m core_app.mot.main \
+  --fname configs/train_mot/dinov2/cholec20-mot-stage4-lean.yaml \
+  --devices cuda:0
+```
+
+Pretrained checkpoints are under `outputs/mot/` (see [outputs/README.md](outputs/README.md)).
 
 ## Related
 
