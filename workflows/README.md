@@ -6,7 +6,7 @@ GOT-JEPA surgical MOT on CholecTrack20. Reusable agent workflows for research, t
 |----------|----------------|----------------|-------|
 | Browser research + SOTA | `devin/mot-browser-research.devin.md` (`!mot-browser-research`) | `/mot-browser-research` | `mot-browser-research` |
 | Stage train / resume | `devin/mot-train-eval.devin.md` (`!mot-train-eval`) | `/mot-train-eval` | `mot-training-workflow` |
-| HOTA + smoke eval | `devin/mot-hota-eval.devin.md` (`!mot-hota-eval`) | `/mot-train-eval` (eval mode) | `mot-training-workflow` |
+| HOTA + smoke eval | `devin/mot-hota-eval.devin.md` (`!mot-hota-eval`) | `/mot-hota-eval` | `mot-training-workflow` |
 | Repo orientation | — | — | `mot-repo-orientation` |
 
 **Canonical docs:** `AGENTS.md`, `README.md`, `agent_docs/cursor_explore_mot_training_pipeline.md`
