@@ -28,6 +28,11 @@ import yaml
 from pathlib import Path
 from typing import Dict, List, Optional
 
+# -- Debugging env vars (must be set before importing torch)
+os.environ.setdefault('NCCL_ASYNC_ERROR_HANDLING', '1')
+os.environ.setdefault('TORCH_SHOW_CPP_STACKTRACE', '1')
+os.environ.setdefault('NCCL_DEBUG', 'WARN')
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -192,6 +197,14 @@ def train_tdv(config: dict, args: argparse.Namespace):
         log_baseline_losses=model_cfg.get('log_baseline_losses', True),
     ).to(device)
 
+    # -- Barrier: ensure all ranks finished loading model before DDP wrap
+    if args.ddp:
+        torch.distributed.barrier()
+        if rank == 0:
+            print(f"[DDP] All ranks ready, model loaded on device.")
+            print(f"[DDP] Trainable params: {sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6:.1f}M")
+            print(f"[DDP] Total params: {sum(p.numel() for p in model.parameters()) / 1e6:.1f}M")
+
     # -- Save pretrained encoder state for L2-SP
     pretrained_encoder_sd = None
     l2sp_weight = config.get('l2sp_weight', 0.0)
@@ -239,10 +252,17 @@ def train_tdv(config: dict, args: argparse.Namespace):
 
     # -- DDP
     if args.ddp:
+        if rank == 0:
+            print(f"[DDP] Wrapping model with DistributedDataParallel...")
+        # find_unused_parameters=False is safe here because all frozen params
+        # (frame_encoder, teacher_*) have requires_grad=False and are skipped by DDP.
+        # find_unused_parameters=True can cause SIGSEGV with xFormers custom kernels.
         model = nn.parallel.DistributedDataParallel(
-            model, device_ids=[local_rank], find_unused_parameters=True,
+            model, device_ids=[local_rank], find_unused_parameters=False,
         )
         raw_model = model.module
+        if rank == 0:
+            print(f"[DDP] DDP wrapping complete.")
     else:
         raw_model = model
 
@@ -275,7 +295,11 @@ def train_tdv(config: dict, args: argparse.Namespace):
                 pg['lr'] = lr * pg.get('lr_scale', 1.0)
 
             # Forward
+            if step == 0 and rank == 0:
+                print(f"[DDP] First forward pass starting... input shape={frame_sequences.shape}")
             outputs = model(frame_sequences)
+            if step == 0 and rank == 0:
+                print(f"[DDP] First forward pass complete. loss={outputs['loss'].item():.4f}")
             loss = outputs['loss']
 
             # L2-SP
