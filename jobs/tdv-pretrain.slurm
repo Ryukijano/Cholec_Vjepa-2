@@ -37,9 +37,15 @@ export LD_LIBRARY_PATH=/scratch/kcwp264/conda/envs/endofm-lv/lib:$LD_LIBRARY_PAT
 # -- Project root
 cd /scratch/kcwp264/Cholec_Vjepa-2
 
-# -- NCCL workarounds for L40S PCIe (no NVLink)
+# -- NCCL workarounds for L40S PCIe (no NVLink) + NCCL version mismatch
 export NCCL_P2P_DISABLE=1
+export NCCL_CUMEM_ENABLE=0
+export NCCL_IB_DISABLE=1
+export NCCL_SOCKET_IFNAME=lo
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
+# Preload PyTorch-bundled NCCL to avoid system NCCL 2.28 mismatch
+PY_SITE=$(python -c "import site; print(site.getsitepackages()[0])")
+export LD_PRELOAD=${PY_SITE}/nvidia/nccl/lib/libnccl.so.2:${LD_PRELOAD:-}
 
 # -- WandB (optional)
 export WANDB_MODE=online

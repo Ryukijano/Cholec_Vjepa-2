@@ -32,9 +32,14 @@ from typing import Dict, List, Optional
 os.environ.setdefault('TORCH_NCCL_ASYNC_ERROR_HANDLING', '1')
 os.environ.setdefault('TORCH_SHOW_CPP_STACKTRACE', '1')
 os.environ.setdefault('NCCL_DEBUG', 'WARN')
-# NCCL_P2P_DISABLE=1 forces NCCL to use its internal SHM transport instead of
-# P2P DMA, which segfaults on L40S PCIe (no NVLink) on this AIRE node.
+# NCCL_P2P_DISABLE=1: L40S PCIe has no NVLink; P2P DMA segfaults.
 os.environ.setdefault('NCCL_P2P_DISABLE', '1')
+# NCCL_CUMEM_ENABLE=0: work around NCCL version mismatch (system NCCL 2.28
+# vs PyTorch-bundled 2.26) causing segfault in CUDA memory registration.
+os.environ.setdefault('NCCL_CUMEM_ENABLE', '0')
+# Force socket transport for single-node (avoid IB/NET plugin issues).
+os.environ.setdefault('NCCL_IB_DISABLE', '1')
+os.environ.setdefault('NCCL_SOCKET_IFNAME', 'lo')
 
 import torch
 import torch.nn as nn
@@ -200,9 +205,10 @@ def train_tdv(config: dict, args: argparse.Namespace):
         log_baseline_losses=model_cfg.get('log_baseline_losses', True),
     ).to(device)
 
-    # -- Sync all ranks before DDP wrap (use device_ids to avoid NCCL guessing)
+    # -- Sync all ranks before DDP wrap (no device_ids — avoids NCCL guessing
+    # segfault on some NCCL versions; the barrier itself is lightweight)
     if args.ddp:
-        torch.distributed.barrier(device_ids=[local_rank])
+        torch.distributed.barrier()
         if rank == 0:
             print(f"[DDP] All ranks ready, model loaded on device.")
             print(f"[DDP] Trainable params: {sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6:.1f}M")
@@ -408,10 +414,11 @@ def main():
     if args.ddp:
         local_rank = int(os.environ.get('LOCAL_RANK', 0))
         torch.cuda.set_device(local_rank)
+        # Do NOT pass device_id here — PyTorch 2.7 + NCCL eager init segfaults
+        # in graph/topo.cc:785 (nullptr paths). See pytorch/pytorch#146118.
         torch.distributed.init_process_group(
             backend='nccl',
             init_method='env://',
-            device_id=torch.device(f'cuda:{local_rank}'),
         )
         print(f"Initialized DDP: rank={torch.distributed.get_rank()}, "
               f"world_size={torch.distributed.get_world_size()}")
