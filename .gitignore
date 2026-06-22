@@ -60,3 +60,4 @@ TrackEval/
 # Temp
 tmp/
 .cache/
+outputs/
