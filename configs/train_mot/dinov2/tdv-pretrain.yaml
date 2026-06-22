@@ -19,7 +19,7 @@
 # =============================================================================
 
 # -- Run metadata
-run_name: tdv-cholec-vits14-endo-stage0
+run_name: tdv-cholec-vitb14-surgenet-stage0
 wandb_project: tdv-cholec
 use_wandb: true
 
@@ -35,16 +35,16 @@ num_workers: 8
 # -- Model
 model:
   backbone_type: dinov2
-  backbone_size: small      # vits14, 384-dim (endo-pretrained)
+  backbone_size: base       # vitb14, 768-dim
   pretrained: true          # load DINOv2 architecture, then override with encoder_checkpoint
-  encoder_checkpoint: /scratch/kcwp264/checkpoints/endo_dino/dinov2_vit14s_latest_checkpoint.pth
+  encoder_checkpoint: /scratch/kcwp264/checkpoints/surgenet_dino/DINOv2_ViTb14_size336_SurgeNetXL.pth
   unfreeze_frame_encoder: false  # use EMA teacher + frozen student initially
   img_size: 224
   patch_size: 14
 
   # Motion encoder
   motion_encoder_depth: 4
-  motion_encoder_heads: 6   # 384/64 = 6 heads for ViT-S (vs 12 for ViT-B)
+  motion_encoder_heads: 12  # 768/64 = 12 heads for ViT-B
   remove_motion_encoder: false
 
   # EMA teacher
@@ -109,4 +109,4 @@ l2sp_weight: 0.0     # set to 1e-3 to enable
 #   - {epoch: 20, num_blocks: 12}  # unfreeze all blocks
 
 # -- Output
-output_dir: outputs/tdv_pretrain_vits14_endo
+output_dir: outputs/tdv_pretrain_vitb14_surgenet
