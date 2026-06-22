@@ -28,6 +28,8 @@ import yaml
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from tqdm import tqdm
+
 # -- Debugging env vars (must be set before importing torch)
 os.environ.setdefault('TORCH_NCCL_ASYNC_ERROR_HANDLING', '1')
 os.environ.setdefault('TORCH_SHOW_CPP_STACKTRACE', '1')
@@ -168,12 +170,14 @@ def train_tdv(config: dict, args: argparse.Namespace):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         rank = 0
         world_size = 1
-    print(f"Device: {device} | rank={rank} | world_size={world_size}")
+    if rank == 0:
+        print(f"Device: {device} | rank={rank} | world_size={world_size}")
 
     # -- Parse SSL video list
     splits_path = PROJECT_ROOT / config['splits_path']
     video_names, extras = parse_ssl_video_list(str(splits_path))
-    print(f"SSL corpus: {len(video_names)} Cholec80 videos + {len(extras)} CT20 extras")
+    if rank == 0:
+        print(f"SSL corpus: {len(video_names)} Cholec80 videos + {len(extras)} CT20 extras")
 
     # -- Build dataloader
     frames_root = config.get('frames_root', '/scratch/kcwp264/datasets_cholec/cholec80/cholec80/frames')
@@ -224,14 +228,12 @@ def train_tdv(config: dict, args: argparse.Namespace):
         log_baseline_losses=model_cfg.get('log_baseline_losses', True),
     ).to(device)
 
-    # -- Sync all ranks before DDP wrap (no device_ids — avoids NCCL guessing
-    # segfault on some NCCL versions; the barrier itself is lightweight)
+    # -- Sync all ranks before DDP wrap
     if args.ddp:
         torch.distributed.barrier()
         if rank == 0:
-            print(f"[DDP] All ranks ready, model loaded on device.")
-            print(f"[DDP] Trainable params: {sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6:.1f}M")
-            print(f"[DDP] Total params: {sum(p.numel() for p in model.parameters()) / 1e6:.1f}M")
+            print(f"Trainable params: {sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6:.1f}M / "
+                  f"{sum(p.numel() for p in model.parameters()) / 1e6:.1f}M total")
 
     # -- Save pretrained encoder state for L2-SP
     pretrained_encoder_sd = None
@@ -240,7 +242,8 @@ def train_tdv(config: dict, args: argparse.Namespace):
         pretrained_encoder_sd = {
             k: v.clone() for k, v in model.frame_encoder.encoder.state_dict().items()
         }
-        print(f"L2-SP regularization enabled (weight={l2sp_weight})")
+        if rank == 0:
+            print(f"L2-SP regularization enabled (weight={l2sp_weight})")
 
     # -- Progressive unfreezing
     unfreeze_schedule = config.get('unfreeze_schedule', None)
@@ -281,17 +284,10 @@ def train_tdv(config: dict, args: argparse.Namespace):
 
     # -- DDP
     if args.ddp:
-        if rank == 0:
-            print(f"[DDP] Wrapping model with DistributedDataParallel...")
-        # find_unused_parameters=False is safe here because all frozen params
-        # (frame_encoder, teacher_*) have requires_grad=False and are skipped by DDP.
-        # find_unused_parameters=True can cause SIGSEGV with xFormers custom kernels.
         model = nn.parallel.DistributedDataParallel(
             model, device_ids=[local_rank], find_unused_parameters=False,
         )
         raw_model = model.module
-        if rank == 0:
-            print(f"[DDP] DDP wrapping complete.")
     else:
         raw_model = model
 
@@ -299,143 +295,131 @@ def train_tdv(config: dict, args: argparse.Namespace):
     step = 0
     epoch = 0
     best_loss = float('inf')
+    last_unfreeze_blocks = -1
 
     if rank == 0:
-        print(f"Starting TDV pretraining for {max_steps} steps...")
-        print(f"  batch_size={config.get('batch_size', 4)}, num_frames={config.get('num_frames', 4)}")
-        print(f"  peak_lr={peak_lr}, warmup={warmup_steps}, grad_clip={grad_clip}")
+        print(f"\nStarting TDV pretraining: {max_steps} steps, {peak_lr:.2e} peak LR")
+        print(f"  batch_size={config.get('batch_size', 4)}/GPU, num_frames={config.get('num_frames', 4)}, world_size={world_size}\n")
+
+    pbar = tqdm(total=max_steps, desc="TDV", disable=(rank != 0))
 
     while step < max_steps:
-        dataloader.sampler.set_epoch(epoch) if hasattr(dataloader.sampler, 'set_epoch') else None
+        if hasattr(dataloader.sampler, 'set_epoch'):
+            dataloader.sampler.set_epoch(epoch)
 
         for batch in dataloader:
             if step >= max_steps:
                 break
 
-            # Progressive unfreezing
+            # Progressive unfreezing (only rebuild optimizer when schedule changes)
             if unfreeze_schedule is not None:
-                progressive_unfreeze(raw_model, epoch, unfreeze_schedule,
-                                     optimizer=optimizer,
-                                     weight_decay=opt_cfg.get('weight_decay', 0.01))
+                current_blocks = 0
+                for entry in sorted(unfreeze_schedule, key=lambda x: x['epoch']):
+                    if epoch >= entry['epoch']:
+                        current_blocks = entry['num_blocks']
+                if current_blocks != last_unfreeze_blocks:
+                    progressive_unfreeze(raw_model, epoch, unfreeze_schedule,
+                                         optimizer=optimizer,
+                                         weight_decay=opt_cfg.get('weight_decay', 0.01))
+                    last_unfreeze_blocks = current_blocks
 
-            frame_sequences = batch.to(device)  # (B, T, C, H, W)
+            frame_sequences = batch.to(device)
 
             # LR schedule
             lr = cosine_lr_schedule(step, max_steps, warmup_steps, peak_lr)
             for pg in optimizer.param_groups:
                 pg['lr'] = lr * pg.get('lr_scale', 1.0)
 
-            # Forward
-            if step == 0 and rank == 0:
-                print(f"[DDP] First forward pass starting... input shape={frame_sequences.shape}")
+            # Forward + backward
             outputs = model(frame_sequences)
-            if step == 0 and rank == 0:
-                print(f"[DDP] First forward pass complete. loss={outputs['loss'].item():.4f}")
             loss = outputs['loss']
 
-            # L2-SP
             if l2sp_weight > 0 and pretrained_encoder_sd is not None:
                 l2sp = l2sp_loss(raw_model, pretrained_encoder_sd)
                 loss = loss + l2sp_weight * l2sp
                 outputs['l2sp_loss'] = l2sp.detach()
 
-            # Backward
             optimizer.zero_grad()
             loss.backward()
             if grad_clip > 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             optimizer.step()
 
-            # EMA update
             if step % ema_update_interval == 0:
                 raw_model.ema_update()
 
-            # Logging
+            # -- Logging to W&B + collapse warnings (rank 0 only)
             if step % log_interval == 0 and rank == 0:
                 log_dict = {k: v.item() if isinstance(v, torch.Tensor) else v
                            for k, v in outputs.items() if k != 'loss'}
                 log_dict['loss'] = loss.item()
                 log_dict['lr'] = lr
-                log_dict['step'] = step
                 log_dict['epoch'] = epoch
 
-                # Collapse detection: check feature variance and DINO entropy
+                # Collapse detection
                 if 'variance' in outputs:
                     feat_var = outputs['variance'].item() if isinstance(outputs['variance'], torch.Tensor) else outputs['variance']
-                    log_dict['feat_var'] = feat_var
                     if feat_var < 1e-4:
-                        print(f"  WARNING: Feature variance {feat_var:.6f} is very low — possible collapse!")
+                        tqdm.write(f"⚠️  COLLAPSE WARNING: feat_var={feat_var:.6f} at step {step}")
                 if 'dino_entropy' in outputs:
                     entropy_val = outputs['dino_entropy'].item() if isinstance(outputs['dino_entropy'], torch.Tensor) else outputs['dino_entropy']
-                    log_dict['dino_entropy'] = entropy_val
                     if entropy_val < 0.1:
-                        print(f"  WARNING: DINO entropy {entropy_val:.4f} is very low — possible collapse!")
-
-                print(f"[step {step}/{max_steps}] loss={loss.item():.4f} lr={lr:.2e}")
-                for k, v in sorted(log_dict.items()):
-                    if k not in ('loss', 'lr', 'step', 'epoch'):
-                        print(f"  {k}: {v:.6f}" if isinstance(v, float) else f"  {k}: {v}")
+                        tqdm.write(f"⚠️  COLLAPSE WARNING: dino_entropy={entropy_val:.4f} at step {step}")
 
                 if use_wandb:
                     wandb.log(log_dict, step=step)
 
-                # Visualizations (heatmaps, PCA, attention, error maps)
-                if use_wandb and step > 0 and step % viz_interval == 0:
-                    try:
-                        log_visualizations_to_wandb(
-                            wandb.run, raw_model, frame_sequences[:4], step, max_images=4
-                        )
-                        print(f"  [viz] Logged visualizations to W&B at step {step}")
-                    except Exception as e:
-                        print(f"  [viz] Visualization failed: {e}")
+            # -- Visualizations to W&B
+            if use_wandb and rank == 0 and step > 0 and step % viz_interval == 0:
+                try:
+                    log_visualizations_to_wandb(
+                        wandb.run, raw_model, frame_sequences[:4], step, max_images=4
+                    )
+                except Exception:
+                    pass
 
-            # Checkpoint (only rank 0)
+            # -- Checkpoint (rank 0 only)
             if step > 0 and step % save_interval == 0 and rank == 0:
                 ckpt_path = output_dir / 'latest.pth.tar'
                 torch.save({
-                    'step': step,
-                    'epoch': epoch,
+                    'step': step, 'epoch': epoch,
                     'model_state_dict': raw_model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
-                    'config': config,
-                    'loss': loss.item(),
+                    'config': config, 'loss': loss.item(),
                 }, ckpt_path)
-                print(f"  Saved checkpoint: {ckpt_path}")
 
                 if loss.item() < best_loss:
                     best_loss = loss.item()
-                    best_path = output_dir / 'best.pth.tar'
                     torch.save({
-                        'step': step,
-                        'epoch': epoch,
+                        'step': step, 'epoch': epoch,
                         'model_state_dict': raw_model.state_dict(),
                         'optimizer_state_dict': optimizer.state_dict(),
-                        'config': config,
-                        'loss': best_loss,
-                    }, best_path)
-                    print(f"  New best loss: {best_loss:.4f} → {best_path}")
+                        'config': config, 'loss': best_loss,
+                    }, output_dir / 'best.pth.tar')
+                    tqdm.write(f"📌 step {step}: best loss={best_loss:.4f}")
 
+            pbar.update(1)
+            pbar.set_postfix(loss=f"{loss.item():.4f}", lr=f"{lr:.1e}", ep=epoch)
             step += 1
 
         epoch += 1
 
-    # -- Final checkpoint (only rank 0)
+    pbar.close()
+
+    # -- Final checkpoint (rank 0 only)
     if rank == 0:
         final_path = output_dir / 'final.pth.tar'
         torch.save({
-            'step': step,
-            'epoch': epoch,
+            'step': step, 'epoch': epoch,
             'model_state_dict': raw_model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'config': config,
             'loss': loss.item() if 'loss' in locals() else 0.0,
         }, final_path)
-        print(f"Training complete. Final checkpoint: {final_path}")
 
-        # -- Extract frame encoder for downstream detection
         encoder_path = output_dir / 'tdv_frame_encoder.pth'
         torch.save(raw_model.get_frame_encoder_state_dict(), encoder_path)
-        print(f"Frame encoder weights saved to: {encoder_path}")
+        print(f"\nTraining complete. Checkpoints saved to {output_dir}/")
 
     if use_wandb:
         wandb.finish()
@@ -464,8 +448,9 @@ def main():
             backend='nccl',
             init_method='env://',
         )
-        print(f"Initialized DDP: rank={torch.distributed.get_rank()}, "
-              f"world_size={torch.distributed.get_world_size()}")
+        if int(os.environ.get('LOCAL_RANK', 0)) == 0:
+            print(f"DDP initialized: rank={torch.distributed.get_rank()}, "
+                  f"world_size={torch.distributed.get_world_size()}")
 
     train_tdv(config, args)
 
