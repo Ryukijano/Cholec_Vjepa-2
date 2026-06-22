@@ -185,8 +185,8 @@ def main():
         return
 
     # Extract features
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=False, num_workers=8)
-    eval_loader = DataLoader(eval_ds, batch_size=args.batch_size, shuffle=False, num_workers=8)
+    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=False, num_workers=4)
+    eval_loader = DataLoader(eval_ds, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
     print(f"\nExtracting train features...")
     X_train, y_train = extract_features(encoder, train_loader, args.device)
@@ -218,11 +218,14 @@ def main():
     print(f"  Eval accuracy:  {eval_acc:.4f}")
     print(f"{'='*60}")
 
+    all_labels = list(range(len(PHASE_NAMES)))
+    present_names = [PHASE_NAMES[i] for i in sorted(set(y_eval.tolist()) | set(y_eval_pred.tolist()))]
+
     print(f"\nClassification Report (eval):")
-    print(classification_report(y_eval, y_eval_pred, target_names=PHASE_NAMES, digits=4))
+    print(classification_report(y_eval, y_eval_pred, labels=all_labels, target_names=PHASE_NAMES, digits=4, zero_division=0))
 
     print(f"\nConfusion Matrix (eval):")
-    cm = confusion_matrix(y_eval, y_eval_pred)
+    cm = confusion_matrix(y_eval, y_eval_pred, labels=all_labels)
     # Print compact confusion matrix
     header = "  " + "  ".join(f"{n[:4]:>4s}" for n in PHASE_NAMES)
     print(header)
