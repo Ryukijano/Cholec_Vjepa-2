@@ -283,6 +283,7 @@ class TDVFrameEncoder(nn.Module):
         img_size: int = 224,
         freeze: bool = True,
         pretrained: bool = True,
+        encoder_checkpoint: str = None,
     ):
         super().__init__()
         self.model_name = model_name
@@ -295,6 +296,27 @@ class TDVFrameEncoder(nn.Module):
             self.encoder = torch.hub.load('facebookresearch/dinov2', model_name)
             # Reset to random init for from-scratch training
             self.encoder.apply(self._init_weights)
+
+        # Override with custom pretrained weights if provided
+        if encoder_checkpoint:
+            ckpt = torch.load(encoder_checkpoint, map_location='cpu', weights_only=False)
+            # Support both raw state_dict and wrapped checkpoint
+            if isinstance(ckpt, dict) and 'student' in ckpt:
+                sd = ckpt['student']
+            elif isinstance(ckpt, dict) and 'state_dict' in ckpt:
+                sd = ckpt['state_dict']
+            elif isinstance(ckpt, dict) and 'model' in ckpt:
+                sd = ckpt['model']
+            else:
+                sd = ckpt
+            # Strip common prefixes
+            sd = {k.replace('encoder.', '', 1) if k.startswith('encoder.') else k: v for k, v in sd.items()}
+            missing, unexpected = self.encoder.load_state_dict(sd, strict=False)
+            if missing:
+                print(f"[TDVFrameEncoder] Missing keys: {len(missing)} (first 5: {missing[:5]})")
+            if unexpected:
+                print(f"[TDVFrameEncoder] Unexpected keys: {len(unexpected)} (first 5: {unexpected[:5]})")
+            print(f"[TDVFrameEncoder] Loaded custom weights from {encoder_checkpoint}")
 
         self.embed_dim = self.encoder.embed_dim
         self.patch_size = self.encoder.patch_size
@@ -350,6 +372,7 @@ class TDVModel(nn.Module):
         unfreeze_frame_encoder: bool = False,
         img_size: int = 224,
         patch_size: int = 14,
+        encoder_checkpoint: str = None,
         # Motion encoder
         motion_encoder_depth: int = 4,
         motion_encoder_heads: int = 12,
@@ -443,6 +466,7 @@ class TDVModel(nn.Module):
             img_size=img_size,
             freeze=not unfreeze_frame_encoder,
             pretrained=pretrained,
+            encoder_checkpoint=encoder_checkpoint,
         )
         set_trainable(self.frame_encoder, trainable=unfreeze_frame_encoder)
 
@@ -475,6 +499,7 @@ class TDVModel(nn.Module):
             if use_fixed_dino_teacher:
                 self.teacher_frame_encoder = TDVFrameEncoder(
                     model_name=hub_name, img_size=img_size, freeze=True, pretrained=True,
+                    encoder_checkpoint=encoder_checkpoint,
                 )
             else:
                 self.teacher_frame_encoder = copy.deepcopy(self.frame_encoder)

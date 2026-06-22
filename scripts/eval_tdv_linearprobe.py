@@ -115,9 +115,11 @@ def extract_features(encoder, loader, device) -> Tuple[np.ndarray, np.ndarray]:
     return np.concatenate(all_feats), np.concatenate(all_labels)
 
 
-def load_tdv_encoder(checkpoint_path: str, device: str = "cuda") -> torch.nn.Module:
+def load_tdv_encoder(checkpoint_path: str, device: str = "cuda", backbone_size: str = "base") -> torch.nn.Module:
     """Load TDV frame encoder from checkpoint."""
     from core_app.models.tdv_model import TDVFrameEncoder
+
+    hub_name = {"small": "dinov2_vits14", "base": "dinov2_vitb14"}.get(backbone_size, "dinov2_vitb14")
 
     ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     state_dict = ckpt["model_state_dict"]
@@ -129,7 +131,7 @@ def load_tdv_encoder(checkpoint_path: str, device: str = "cuda") -> torch.nn.Mod
             encoder_sd[k[len("frame_encoder."):]] = v
 
     encoder = TDVFrameEncoder(
-        model_name="dinov2_vitb14",
+        model_name=hub_name,
         img_size=224,
         freeze=True,
         pretrained=True,
@@ -146,7 +148,11 @@ def load_tdv_encoder(checkpoint_path: str, device: str = "cuda") -> torch.nn.Mod
 
 def main():
     parser = argparse.ArgumentParser(description="Linear probe eval of TDV encoder")
-    parser.add_argument("--checkpoint", required=True, help="Path to TDV checkpoint")
+    parser.add_argument("--checkpoint", required=True, help="Path to TDV checkpoint or endo checkpoint")
+    parser.add_argument("--backbone-size", default="base", choices=["small", "base"],
+                        help="ViT backbone size (small=vits14/384d, base=vitb14/768d)")
+    parser.add_argument("--endo-checkpoint", default=None,
+                        help="Path to endo-pretrained DINOv2 checkpoint for direct evaluation")
     parser.add_argument("--frames-root", default="/scratch/kcwp264/datasets_cholec/cholec80/cholec80/frames")
     parser.add_argument("--phase-root", default="/scratch/kcwp264/datasets_cholec/cholec80/cholec80/phase_annotations")
     parser.add_argument("--img-size", type=int, default=224)
@@ -173,10 +179,21 @@ def main():
     print(f"Eval videos:  {len(eval_videos)} ({eval_videos})")
     print(f"Max frames/video: {args.max_frames_per_video}")
 
+    hub_name = {"small": "dinov2_vits14", "base": "dinov2_vitb14"}.get(args.backbone_size, "dinov2_vitb14")
+
     # Load encoder
-    print(f"\nLoading TDV encoder from checkpoint...")
-    encoder = load_tdv_encoder(args.checkpoint, args.device)
-    print(f"  Encoder loaded. Embed dim: {encoder.embed_dim}")
+    if args.endo_checkpoint:
+        # Direct evaluation of endo-pretrained checkpoint (no TDV training)
+        print(f"\nLoading endo-pretrained encoder directly...")
+        encoder = TDVFrameEncoder(
+            model_name=hub_name, img_size=224, freeze=True, pretrained=True,
+            encoder_checkpoint=args.endo_checkpoint,
+        ).to(args.device)
+        print(f"  Encoder loaded. Embed dim: {encoder.embed_dim}")
+    else:
+        print(f"\nLoading TDV encoder from checkpoint...")
+        encoder = load_tdv_encoder(args.checkpoint, args.device, args.backbone_size)
+        print(f"  Encoder loaded. Embed dim: {encoder.embed_dim}")
 
     # Build datasets
     print(f"\nBuilding datasets...")
@@ -244,12 +261,12 @@ def main():
         row = "  ".join(f"{cm[i,j]:4d}" for j in range(len(PHASE_NAMES)))
         print(f"  {name[:8]:>8s}  {row}")
 
-    # Also evaluate with raw DINOv2 (no TDV) for comparison
+    # Also evaluate with raw DINOv2 (no TDV, no endo) for comparison
     print(f"\n{'='*60}")
-    print(f"BASELINE: Raw DINOv2 (no TDV pretraining)")
+    print(f"BASELINE: Raw DINOv2 {args.backbone_size} (no domain pretraining)")
     print(f"{'='*60}")
     raw_encoder = TDVFrameEncoder(
-        model_name="dinov2_vitb14", img_size=224, freeze=True, pretrained=True,
+        model_name=hub_name, img_size=224, freeze=True, pretrained=True,
     ).to(args.device)
 
     print(f"Extracting raw DINOv2 train features...")

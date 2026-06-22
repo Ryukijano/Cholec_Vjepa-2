@@ -180,6 +180,7 @@ def train_tdv(config: dict, args: argparse.Namespace):
         unfreeze_frame_encoder=model_cfg.get('unfreeze_frame_encoder', False),
         img_size=model_cfg.get('img_size', 224),
         patch_size=model_cfg.get('patch_size', 14),
+        encoder_checkpoint=model_cfg.get('encoder_checkpoint', None),
         motion_encoder_depth=model_cfg.get('motion_encoder_depth', 4),
         motion_encoder_heads=model_cfg.get('motion_encoder_heads', 12),
         remove_motion_encoder=model_cfg.get('remove_motion_encoder', False),
