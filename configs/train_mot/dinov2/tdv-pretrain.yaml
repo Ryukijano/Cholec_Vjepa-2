@@ -38,7 +38,7 @@ model:
   backbone_size: base       # vitb14, 768-dim
   pretrained: true          # load DINOv2 architecture, then override with encoder_checkpoint
   encoder_checkpoint: /scratch/kcwp264/checkpoints/surgenet_dino/DINOv2_ViTb14_size336_SurgeNetXL.pth
-  unfreeze_frame_encoder: false  # use EMA teacher + frozen student initially
+  unfreeze_frame_encoder: false  # controlled by progressive_unfreeze schedule below
   img_size: 224
   patch_size: 14
 
@@ -57,16 +57,22 @@ model:
   dino_head_prototype_dim: 65536
   use_separate_ibot_head: false
 
-  # Losses
+  # Losses — anti-collapse: DINO loss + centering + sharpening prevent representation collapse
   use_mse_loss: true
   mse_loss_weight: 1.0
-  use_dino_loss: true
+  use_dino_loss: true       # CRITICAL: prevents collapse via self-distillation
   dino_loss_weight: 1.0
   use_ibot_loss: false
   ibot_loss_weight: 1.0
   use_motion_loss: true
   motion_loss_weight: 0.1
-  min_embed_diff_per_pixel_diff: 0.5  # minimum embed_diff/pixel_diff ratio; 0.0 disables motion loss
+  min_embed_diff_per_pixel_diff: 0.5
+
+  # Anti-collapse hparams
+  recon_use_centering: true   # center teacher output to prevent constant offset collapse
+  recon_use_sharpening: true  # sharpen teacher / soften student
+  use_centering: true
+  use_sharpening: true
 
   # Augmentation
   use_dino_augmentation: true
@@ -80,33 +86,38 @@ model:
   log_var_covar: true
   log_baseline_losses: true
 
-# -- Optimizer
+# -- Optimizer — lower LR for unfrozen encoder blocks (lr_scale=0.1 in get_param_groups)
 optimizer:
-  peak_lr: 1.0e-4
+  peak_lr: 5.0e-5          # lower than frozen baseline since encoder will unfreeze
   weight_decay: 0.01
   beta1: 0.9
   beta2: 0.999
 
 # -- Training schedule
-max_steps: 50000
+max_steps: 30000           # enough for 25+ epochs on 73 videos
 warmup_steps: 1000
-gradient_clip_val: 1.0
+gradient_clip_val: 1.0     # critical: prevents gradient spikes when unfreezing
 ema_update_interval: 1
-save_interval: 2000
+ema_momentum_schedule:     # EMA momentum increases over training for stability
+  - {step: 0, momentum: 0.996}
+  - {step: 15000, momentum: 0.999}
+save_interval: 1000
 log_interval: 50
-eval_interval: 2000
+eval_interval: 1000
 
-# -- L2-SP regularization (anchor to pretrained DINOv2 weights)
-l2sp_weight: 0.0     # set to 1e-3 to enable
+# -- L2-SP regularization (anchor to SurgeNetDINO pretrained weights)
+# Prevents catastrophic forgetting of surgical domain knowledge
+l2sp_weight: 1.0e-3
 
 # -- Progressive unfreezing (ExPLoRA-style)
-# Uncomment to progressively unfreeze encoder blocks during training
-# unfreeze_schedule:
-#   - {epoch: 0,  num_blocks: 0}   # fully frozen, only train motion encoder + heads
-#   - {epoch: 5,  num_blocks: 2}   # unfreeze last 2 blocks
-#   - {epoch: 10, num_blocks: 4}   # unfreeze last 4 blocks
-#   - {epoch: 15, num_blocks: 6}   # unfreeze last 6 blocks
-#   - {epoch: 20, num_blocks: 12}  # unfreeze all blocks
+# Gradually unfreeze encoder blocks to adapt to Cholec80 while preserving
+# SurgeNetDINO features. L2-SP anchors to pretrained weights throughout.
+unfreeze_schedule:
+  - {epoch: 0,  num_blocks: 0}   # fully frozen, train motion encoder + DINO head only
+  - {epoch: 5,  num_blocks: 2}   # unfreeze last 2 blocks (high-level semantics)
+  - {epoch: 10, num_blocks: 4}   # unfreeze last 4 blocks
+  - {epoch: 15, num_blocks: 6}   # unfreeze last 6 blocks
+  - {epoch: 20, num_blocks: 12}  # unfreeze all 12 blocks (full fine-tune)
 
 # -- Output
 output_dir: outputs/tdv_pretrain_vitb14_surgenet

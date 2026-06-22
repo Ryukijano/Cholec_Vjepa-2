@@ -109,12 +109,14 @@ def l2sp_loss(model: TDVModel, pretrained_encoder_sd: Dict[str, torch.Tensor]) -
     return loss
 
 
-def progressive_unfreeze(model: TDVModel, epoch: int, unfreeze_schedule: List[Dict]):
+def progressive_unfreeze(model: TDVModel, epoch: int, unfreeze_schedule: List[Dict],
+                         optimizer=None, weight_decay: float = 0.01):
     """Progressively unfreeze encoder layers based on a schedule.
 
     Args:
         unfreeze_schedule: list of dicts with 'epoch' and 'num_blocks' keys,
             e.g. [{'epoch': 0, 'num_blocks': 0}, {'epoch': 5, 'num_blocks': 4}, ...]
+        optimizer: if provided, rebuilds param groups to include newly-unfrozen params
     """
     # Find the current schedule entry
     current_blocks = 0
@@ -138,6 +140,20 @@ def progressive_unfreeze(model: TDVModel, epoch: int, unfreeze_schedule: List[Di
     trainable = sum(p.numel() for p in model.frame_encoder.parameters() if p.requires_grad)
     print(f"[Progressive Unfreeze] Epoch {epoch}: {blocks_to_unfreeze}/{total_blocks} blocks trainable "
           f"({trainable / 1e6:.1f}M params in frame encoder)")
+
+    # Rebuild optimizer param groups to pick up newly-unfrozen params
+    if optimizer is not None:
+        param_groups = get_param_groups(model, weight_decay)
+        # Preserve current LR and momentum from existing optimizer state
+        old_lr = optimizer.param_groups[0]['lr'] if optimizer.param_groups else 1e-4
+        old_state = optimizer.state
+        optimizer.__init__(
+            param_groups,
+            lr=old_lr,
+            betas=(optimizer.param_groups[0].get('betas', (0.9, 0.999))) if optimizer.param_groups else (0.9, 0.999),
+        )
+        optimizer.state = old_state  # preserve Adam momentum for already-seen params
+        print(f"  Optimizer rebuilt with {sum(len(pg['params']) for pg in param_groups)} params")
 
 
 def train_tdv(config: dict, args: argparse.Namespace):
@@ -296,7 +312,9 @@ def train_tdv(config: dict, args: argparse.Namespace):
 
             # Progressive unfreezing
             if unfreeze_schedule is not None:
-                progressive_unfreeze(raw_model, epoch, unfreeze_schedule)
+                progressive_unfreeze(raw_model, epoch, unfreeze_schedule,
+                                     optimizer=optimizer,
+                                     weight_decay=opt_cfg.get('weight_decay', 0.01))
 
             frame_sequences = batch.to(device)  # (B, T, C, H, W)
 
@@ -338,6 +356,18 @@ def train_tdv(config: dict, args: argparse.Namespace):
                 log_dict['lr'] = lr
                 log_dict['step'] = step
                 log_dict['epoch'] = epoch
+
+                # Collapse detection: check feature variance and DINO entropy
+                if 'variance' in outputs:
+                    feat_var = outputs['variance'].item() if isinstance(outputs['variance'], torch.Tensor) else outputs['variance']
+                    log_dict['feat_var'] = feat_var
+                    if feat_var < 1e-4:
+                        print(f"  WARNING: Feature variance {feat_var:.6f} is very low — possible collapse!")
+                if 'dino_entropy' in outputs:
+                    entropy_val = outputs['dino_entropy'].item() if isinstance(outputs['dino_entropy'], torch.Tensor) else outputs['dino_entropy']
+                    log_dict['dino_entropy'] = entropy_val
+                    if entropy_val < 0.1:
+                        print(f"  WARNING: DINO entropy {entropy_val:.4f} is very low — possible collapse!")
 
                 print(f"[step {step}/{max_steps}] loss={loss.item():.4f} lr={lr:.2e}")
                 for k, v in sorted(log_dict.items()):
