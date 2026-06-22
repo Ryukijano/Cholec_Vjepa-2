@@ -32,7 +32,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 # Phase names in Cholec80
 PHASE_NAMES = [
-    "Preparation", "CalotTriangleDissection", "Closure",
+    "Preparation", "CalotTriangleDissection", "ClippingCutting",
     "GallbladderDissection", "GallbladderPackaging",
     "CleaningCoagulation", "GallbladderRetraction",
 ]
@@ -62,7 +62,8 @@ class Cholec80PhaseDataset(Dataset):
 
             phases = self._read_phases(phase_file)
             frame_files = sorted(video_dir.glob("*.png"))
-            n_frames = min(len(frame_files), len(phases))
+            n_frames = len(frame_files)
+            n_phases = len(phases)
 
             # Sample uniformly across the entire video to cover all phases
             if max_frames_per_video > 0 and n_frames > max_frames_per_video:
@@ -71,7 +72,11 @@ class Cholec80PhaseDataset(Dataset):
                 indices = range(n_frames)
 
             for i in indices:
-                phase_name = phases[i]
+                # Annotations are at higher fps than frames (e.g. 25fps vs 1fps).
+                # Map frame index to corresponding annotation row.
+                phase_idx = int(i * n_phases / n_frames)
+                phase_idx = min(phase_idx, n_phases - 1)
+                phase_name = phases[phase_idx]
                 if phase_name in PHASE_TO_IDX:
                     self.samples.append((str(frame_files[i]), PHASE_TO_IDX[phase_name]))
 
