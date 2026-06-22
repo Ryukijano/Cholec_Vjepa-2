@@ -51,6 +51,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from core_app.models.tdv_model import TDVModel
+from core_app.models.tdv_viz import log_visualizations_to_wandb
 from core_app.tdv_dataloader import (
     Cholec80TDVDataset,
     parse_ssl_video_list,
@@ -262,6 +263,7 @@ def train_tdv(config: dict, args: argparse.Namespace):
     save_interval = config.get('save_interval', 1000)
     log_interval = config.get('log_interval', 50)
     eval_interval = config.get('eval_interval', 1000)
+    viz_interval = config.get('viz_interval', 500)
 
     # -- Output directory
     output_dir = Path(config.get('output_dir', 'outputs/tdv_pretrain'))
@@ -376,6 +378,16 @@ def train_tdv(config: dict, args: argparse.Namespace):
 
                 if use_wandb:
                     wandb.log(log_dict, step=step)
+
+                # Visualizations (heatmaps, PCA, attention, error maps)
+                if use_wandb and step > 0 and step % viz_interval == 0:
+                    try:
+                        log_visualizations_to_wandb(
+                            wandb.run, raw_model, frame_sequences[:4], step, max_images=4
+                        )
+                        print(f"  [viz] Logged visualizations to W&B at step {step}")
+                    except Exception as e:
+                        print(f"  [viz] Visualization failed: {e}")
 
             # Checkpoint (only rank 0)
             if step > 0 and step % save_interval == 0 and rank == 0:
