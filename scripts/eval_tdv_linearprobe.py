@@ -200,7 +200,7 @@ def main():
     print(f"\nTraining logistic regression (C={args.C}, max_iter={args.max_iter})...")
     clf = LogisticRegression(
         C=args.C, max_iter=args.max_iter, random_state=42,
-        multi_class="multinomial", solver="lbfgs",
+        solver="lbfgs",
     )
     clf.fit(X_train, y_train)
 
@@ -245,7 +245,7 @@ def main():
 
     clf_raw = LogisticRegression(
         C=args.C, max_iter=args.max_iter, random_state=42,
-        multi_class="multinomial", solver="lbfgs",
+        solver="lbfgs",
     )
     clf_raw.fit(X_train_raw, y_train)
     y_eval_pred_raw = clf_raw.predict(X_eval_raw)
