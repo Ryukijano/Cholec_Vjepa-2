@@ -62,14 +62,18 @@ class Cholec80PhaseDataset(Dataset):
 
             phases = self._read_phases(phase_file)
             frame_files = sorted(video_dir.glob("*.png"))
-            for i, frame_path in enumerate(frame_files):
-                if i >= len(phases):
-                    break
-                if max_frames_per_video > 0 and i >= max_frames_per_video:
-                    break
+            n_frames = min(len(frame_files), len(phases))
+
+            # Sample uniformly across the entire video to cover all phases
+            if max_frames_per_video > 0 and n_frames > max_frames_per_video:
+                indices = np.linspace(0, n_frames - 1, max_frames_per_video, dtype=int)
+            else:
+                indices = range(n_frames)
+
+            for i in indices:
                 phase_name = phases[i]
                 if phase_name in PHASE_TO_IDX:
-                    self.samples.append((str(frame_path), PHASE_TO_IDX[phase_name]))
+                    self.samples.append((str(frame_files[i]), PHASE_TO_IDX[phase_name]))
 
     @staticmethod
     def _read_phases(phase_file: Path) -> List[str]:
@@ -148,6 +152,8 @@ def main():
     parser.add_argument("--C", type=float, default=1.0, help="Logistic regression regularization")
     parser.add_argument("--max-iter", type=int, default=2000)
     args = parser.parse_args()
+
+    from core_app.models.tdv_model import TDVFrameEncoder
 
     # SSL-excluded videos (CT20 val/test) = our eval set
     eval_videos = ["video01", "video06", "video07", "video12", "video25", "video30", "video39"]
