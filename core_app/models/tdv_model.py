@@ -311,6 +311,24 @@ class TDVFrameEncoder(nn.Module):
                 sd = ckpt
             # Strip common prefixes
             sd = {k.replace('encoder.', '', 1) if k.startswith('encoder.') else k: v for k, v in sd.items()}
+
+            # Interpolate positional embeddings if resolution differs
+            if 'pos_embed' in sd:
+                pe = sd['pos_embed']  # (1, N_src, D)
+                n_src = pe.shape[1] - 1  # exclude CLS token
+                n_tgt = self.encoder.pos_embed.shape[1] - 1
+                if n_src != n_tgt:
+                    import math
+                    gs_src = int(math.sqrt(n_src))
+                    gs_tgt = int(math.sqrt(n_tgt))
+                    cls_pe = pe[:, :1, :]  # (1, 1, D)
+                    patch_pe = pe[:, 1:, :]  # (1, N_src, D)
+                    patch_pe = patch_pe.reshape(1, gs_src, gs_src, -1).permute(0, 3, 1, 2)
+                    patch_pe = F.interpolate(patch_pe, size=(gs_tgt, gs_tgt), mode='bicubic', align_corners=False)
+                    patch_pe = patch_pe.permute(0, 2, 3, 1).reshape(1, gs_tgt * gs_tgt, -1)
+                    sd['pos_embed'] = torch.cat([cls_pe, patch_pe], dim=1)
+                    print(f"[TDVFrameEncoder] Interpolated pos_embed: {n_src}→{n_tgt} tokens ({gs_src}x{gs_src}→{gs_tgt}x{gs_tgt})")
+
             missing, unexpected = self.encoder.load_state_dict(sd, strict=False)
             if missing:
                 print(f"[TDVFrameEncoder] Missing keys: {len(missing)} (first 5: {missing[:5]})")
