@@ -88,7 +88,7 @@ model:
 
 # -- Optimizer — lower LR for unfrozen encoder blocks (lr_scale=0.1 in get_param_groups)
 optimizer:
-  peak_lr: 5.0e-5          # lower than frozen baseline since encoder will unfreeze
+  peak_lr: 2.0e-5          # lowered from 5e-5 — encoder collapses with higher LR
   weight_decay: 0.01
   beta1: 0.9
   beta2: 0.999
@@ -108,17 +108,19 @@ viz_interval: 500          # log visualizations to W&B every N steps
 
 # -- L2-SP regularization (anchor to SurgeNetDINO pretrained weights)
 # Prevents catastrophic forgetting of surgical domain knowledge
-l2sp_weight: 1.0e-3
+l2sp_weight: 1.0e-2              # increased 10x — 1e-3 was too weak, caused collapse
 
 # -- Progressive unfreezing (step-based)
 # Gradually unfreeze encoder blocks to adapt to Cholec80 while preserving
 # SurgeNetDINO features. L2-SP anchors to pretrained weights throughout.
 unfreeze_schedule:
-  - {step: 0,     num_blocks: 0}   # fully frozen, train motion encoder + DINO head only
-  - {step: 5000,  num_blocks: 2}   # unfreeze last 2 blocks (high-level semantics)
-  - {step: 10000, num_blocks: 4}   # unfreeze last 4 blocks
-  - {step: 15000, num_blocks: 6}   # unfreeze last 6 blocks
-  - {step: 25000, num_blocks: 12}  # unfreeze all 12 blocks (full fine-tune)
+  - {step: 0,     num_blocks: 0}   # frozen warmup (already completed in stage 0)
+  - {step: 29000, num_blocks: 2}   # resume: unfreeze last 2 blocks
+  - {step: 32000, num_blocks: 4}   # +2 more blocks
+  - {step: 35000, num_blocks: 6}   # +2 more blocks
+  - {step: 38000, num_blocks: 8}   # +2 more blocks
+  - {step: 41000, num_blocks: 10}  # +2 more blocks
+  - {step: 44000, num_blocks: 12}  # full fine-tune for last 16k steps
 
 # -- Output
 output_dir: outputs/tdv_pretrain_vitb14_surgenet

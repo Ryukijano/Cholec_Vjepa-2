@@ -352,10 +352,22 @@ def train_tdv(config: dict, args: argparse.Namespace, resume_path: str = None):
 
             frame_sequences = batch.to(device)
 
-            # LR schedule
+            # LR schedule — cosine decay for non-encoder params
             lr = cosine_lr_schedule(step, max_steps, warmup_steps, peak_lr)
             for pg in optimizer.param_groups:
-                pg['lr'] = lr * pg.get('lr_scale', 1.0)
+                scale = pg.get('lr_scale', 1.0)
+                # Encoder LR warmup: when blocks first unfreeze, ramp from 0
+                # over 500 steps to prevent collapse from sudden gradient flow
+                if scale < 1.0 and last_unfreeze_blocks > 0:
+                    unfreeze_step = 0
+                    for entry in sorted(unfreeze_schedule, key=lambda x: x['step']):
+                        if entry['num_blocks'] == last_unfreeze_blocks:
+                            unfreeze_step = entry['step']
+                            break
+                    steps_since_unfreeze = step - unfreeze_step
+                    if steps_since_unfreeze < 500:
+                        scale = scale * (steps_since_unfreeze / 500)
+                pg['lr'] = lr * scale
 
             # Forward + backward
             outputs = model(frame_sequences)
