@@ -160,7 +160,7 @@ def progressive_unfreeze(model: TDVModel, step: int, unfreeze_schedule: List[Dic
         optimizer.state = old_state
 
 
-def train_tdv(config: dict, args: argparse.Namespace):
+def train_tdv(config: dict, args: argparse.Namespace, resume_path: str = None):
     if args.ddp:
         local_rank = int(os.environ.get('LOCAL_RANK', 0))
         torch.cuda.set_device(local_rank)
@@ -298,11 +298,36 @@ def train_tdv(config: dict, args: argparse.Namespace):
     best_loss = float('inf')
     last_unfreeze_blocks = -1
 
+    # -- Resume from checkpoint
+    if resume_path is not None:
+        if rank == 0:
+            print(f"Loading checkpoint: {resume_path}")
+        ckpt = torch.load(resume_path, map_location='cpu', weights_only=False)
+        raw_model.load_state_dict(ckpt['model_state_dict'])
+        step = ckpt['step']
+        epoch = ckpt['epoch']
+        best_loss = ckpt.get('loss', float('inf'))
+        # Don't load optimizer state — param groups will change when we unfreeze
+        if rank == 0:
+            print(f"Resumed from step {step}, epoch {epoch}, loss {best_loss:.4f}")
+        # Apply current unfreeze schedule for the resumed step
+        if unfreeze_schedule is not None:
+            current_blocks = 0
+            for entry in sorted(unfreeze_schedule, key=lambda x: x['step']):
+                if step >= entry['step']:
+                    current_blocks = entry['num_blocks']
+            progressive_unfreeze(raw_model, step, unfreeze_schedule,
+                                 optimizer=optimizer,
+                                 weight_decay=opt_cfg.get('weight_decay', 0.01),
+                                 rank=rank)
+            last_unfreeze_blocks = current_blocks
+        torch.cuda.empty_cache()
+
     if rank == 0:
         print(f"\nStarting TDV pretraining: {max_steps} steps, {peak_lr:.2e} peak LR")
         print(f"  batch_size={config.get('batch_size', 4)}/GPU, num_frames={config.get('num_frames', 4)}, world_size={world_size}\n")
 
-    pbar = tqdm(total=max_steps, desc="TDV", disable=(rank != 0))
+    pbar = tqdm(total=max_steps, initial=step, desc="TDV", disable=(rank != 0))
 
     while step < max_steps:
         if hasattr(dataloader.sampler, 'set_epoch'):
@@ -435,6 +460,7 @@ def main():
     parser.add_argument('--config', type=str, required=True, help='Path to YAML config')
     parser.add_argument('--ddp', action='store_true', help='Enable DDP')
     parser.add_argument('--no-wandb', action='store_true', help='Disable WandB')
+    parser.add_argument('--resume', type=str, default=None, help='Path to checkpoint to resume from')
     args = parser.parse_args()
 
     with open(args.config, 'r') as f:
@@ -454,7 +480,7 @@ def main():
             print(f"DDP initialized: rank={torch.distributed.get_rank()}, "
                   f"world_size={torch.distributed.get_world_size()}")
 
-    train_tdv(config, args)
+    train_tdv(config, args, resume_path=args.resume)
 
 
 if __name__ == '__main__':
