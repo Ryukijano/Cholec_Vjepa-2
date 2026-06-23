@@ -19,7 +19,7 @@
 # =============================================================================
 
 # -- Run metadata
-run_name: tdv-cholec-vitb14-surgenet-stage0
+run_name: tdv-cholec-vitb14-surgenet-stage1-gradual-unfreeze
 wandb_project: tdv-cholec
 use_wandb: true
 
