@@ -94,7 +94,7 @@ optimizer:
   beta2: 0.999
 
 # -- Training schedule
-max_steps: 30000           # enough for 25+ epochs on 73 videos
+max_steps: 60000           # ~10 epochs; unfreeze at 5k, full at 25k, train 35k more
 warmup_steps: 1000
 gradient_clip_val: 1.0     # critical: prevents gradient spikes when unfreezing
 ema_update_interval: 1
@@ -110,15 +110,15 @@ viz_interval: 500          # log visualizations to W&B every N steps
 # Prevents catastrophic forgetting of surgical domain knowledge
 l2sp_weight: 1.0e-3
 
-# -- Progressive unfreezing (ExPLoRA-style)
+# -- Progressive unfreezing (step-based)
 # Gradually unfreeze encoder blocks to adapt to Cholec80 while preserving
 # SurgeNetDINO features. L2-SP anchors to pretrained weights throughout.
 unfreeze_schedule:
-  - {epoch: 0,  num_blocks: 0}   # fully frozen, train motion encoder + DINO head only
-  - {epoch: 5,  num_blocks: 2}   # unfreeze last 2 blocks (high-level semantics)
-  - {epoch: 10, num_blocks: 4}   # unfreeze last 4 blocks
-  - {epoch: 15, num_blocks: 6}   # unfreeze last 6 blocks
-  - {epoch: 20, num_blocks: 12}  # unfreeze all 12 blocks (full fine-tune)
+  - {step: 0,     num_blocks: 0}   # fully frozen, train motion encoder + DINO head only
+  - {step: 5000,  num_blocks: 2}   # unfreeze last 2 blocks (high-level semantics)
+  - {step: 10000, num_blocks: 4}   # unfreeze last 4 blocks
+  - {step: 15000, num_blocks: 6}   # unfreeze last 6 blocks
+  - {step: 25000, num_blocks: 12}  # unfreeze all 12 blocks (full fine-tune)
 
 # -- Output
 output_dir: outputs/tdv_pretrain_vitb14_surgenet

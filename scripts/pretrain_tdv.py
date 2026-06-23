@@ -112,19 +112,21 @@ def l2sp_loss(model: TDVModel, pretrained_encoder_sd: Dict[str, torch.Tensor]) -
     return loss
 
 
-def progressive_unfreeze(model: TDVModel, epoch: int, unfreeze_schedule: List[Dict],
-                         optimizer=None, weight_decay: float = 0.01):
-    """Progressively unfreeze encoder layers based on a schedule.
+def progressive_unfreeze(model: TDVModel, step: int, unfreeze_schedule: List[Dict],
+                         optimizer=None, weight_decay: float = 0.01, rank: int = 0):
+    """Progressively unfreeze encoder layers based on a step-based schedule.
 
     Args:
-        unfreeze_schedule: list of dicts with 'epoch' and 'num_blocks' keys,
-            e.g. [{'epoch': 0, 'num_blocks': 0}, {'epoch': 5, 'num_blocks': 4}, ...]
+        step: current training step
+        unfreeze_schedule: list of dicts with 'step' and 'num_blocks' keys,
+            e.g. [{'step': 0, 'num_blocks': 0}, {'step': 5000, 'num_blocks': 4}, ...]
         optimizer: if provided, rebuilds param groups to include newly-unfrozen params
+        rank: DDP rank for logging (only rank 0 prints)
     """
     # Find the current schedule entry
     current_blocks = 0
-    for entry in sorted(unfreeze_schedule, key=lambda x: x['epoch']):
-        if epoch >= entry['epoch']:
+    for entry in sorted(unfreeze_schedule, key=lambda x: x['step']):
+        if step >= entry['step']:
             current_blocks = entry['num_blocks']
 
     # Unfreeze the last N blocks of the frame encoder
@@ -141,13 +143,13 @@ def progressive_unfreeze(model: TDVModel, epoch: int, unfreeze_schedule: List[Di
                 p.requires_grad = False
 
     trainable = sum(p.numel() for p in model.frame_encoder.parameters() if p.requires_grad)
-    print(f"[Progressive Unfreeze] Epoch {epoch}: {blocks_to_unfreeze}/{total_blocks} blocks trainable "
-          f"({trainable / 1e6:.1f}M params in frame encoder)")
+    if rank == 0:
+        tqdm.write(f"🔓 Unfreeze @ step {step}: {blocks_to_unfreeze}/{total_blocks} blocks "
+                   f"({trainable / 1e6:.1f}M encoder params trainable)")
 
     # Rebuild optimizer param groups to pick up newly-unfrozen params
     if optimizer is not None:
         param_groups = get_param_groups(model, weight_decay)
-        # Preserve current LR and momentum from existing optimizer state
         old_lr = optimizer.param_groups[0]['lr'] if optimizer.param_groups else 1e-4
         old_state = optimizer.state
         optimizer.__init__(
@@ -155,8 +157,7 @@ def progressive_unfreeze(model: TDVModel, epoch: int, unfreeze_schedule: List[Di
             lr=old_lr,
             betas=(optimizer.param_groups[0].get('betas', (0.9, 0.999))) if optimizer.param_groups else (0.9, 0.999),
         )
-        optimizer.state = old_state  # preserve Adam momentum for already-seen params
-        print(f"  Optimizer rebuilt with {sum(len(pg['params']) for pg in param_groups)} params")
+        optimizer.state = old_state
 
 
 def train_tdv(config: dict, args: argparse.Namespace):
@@ -311,16 +312,17 @@ def train_tdv(config: dict, args: argparse.Namespace):
             if step >= max_steps:
                 break
 
-            # Progressive unfreezing (only rebuild optimizer when schedule changes)
+            # Progressive unfreezing (step-based, only rebuild optimizer when schedule changes)
             if unfreeze_schedule is not None:
                 current_blocks = 0
-                for entry in sorted(unfreeze_schedule, key=lambda x: x['epoch']):
-                    if epoch >= entry['epoch']:
+                for entry in sorted(unfreeze_schedule, key=lambda x: x['step']):
+                    if step >= entry['step']:
                         current_blocks = entry['num_blocks']
                 if current_blocks != last_unfreeze_blocks:
-                    progressive_unfreeze(raw_model, epoch, unfreeze_schedule,
+                    progressive_unfreeze(raw_model, step, unfreeze_schedule,
                                          optimizer=optimizer,
-                                         weight_decay=opt_cfg.get('weight_decay', 0.01))
+                                         weight_decay=opt_cfg.get('weight_decay', 0.01),
+                                         rank=rank)
                     last_unfreeze_blocks = current_blocks
 
             frame_sequences = batch.to(device)
