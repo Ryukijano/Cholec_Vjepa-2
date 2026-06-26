@@ -1,0 +1,125 @@
+# Stage 1 — TDV-pretrained LoRA-DETR detector on CholecTrack20.
+#
+# This config is identical to cholec20-mot-stage1-lora-detect.yaml but loads
+# the frame encoder from a TDV pretraining checkpoint (Stage 0) instead of
+# vanilla DINOv2.  The TDV-pretrained encoder has been domain-adapted to
+# surgical video via temporal difference learning on the leak-free Cholec80
+# SSL corpus.
+#
+# Usage:
+#   1. Run TDV pretraining:  python scripts/pretrain_tdv.py --config configs/train_mot/dinov2/tdv-pretrain.yaml
+#   2. Run detection:        python scripts/train_mot.py --config configs/train_mot/dinov2/cholec20-mot-stage1-tdv-detect.yaml
+
+meta:
+  stage: stage1_supervised_tdv
+  folder: outputs/mot/cholec20-stage1-tdv-detect
+  name: cholec20-mot-stage1-tdv-detect
+  seed: 42
+  dtype: bfloat16
+
+data:
+  dataset_type: MOTCholecDataset
+  datasets:
+    - data/cholectrack20
+  clip_length: 3
+  img_size: 392
+  batch_size: 16
+  num_workers: 8
+  pin_memory: true
+
+model:
+  encoder_type: dinov2
+  model_name: dinov2_vitb14
+  encoder_dim: 768
+  neck_dim: 256
+  layer_indices: [-1]
+  # Load TDV-pretrained encoder weights (Stage 0 output)
+  encoder_checkpoint: outputs/tdv_pretrain/tdv_frame_encoder.pth
+  use_torch_hub: true
+  # LoRA on top of TDV-pretrained encoder — smaller rank since encoder
+  # is already domain-adapted and needs less adaptation
+  encoder_lora:
+    enable: true
+    rank: 8
+    alpha: 16
+    dropout: 0.05
+    target_modules: ['qkv', 'proj', 'fc1', 'fc2']
+    start_block: 3          # freeze blocks 0-2, LoRA on blocks 3+
+    end_block: null
+
+predictor:
+  dim: 256
+  num_heads: 8
+  num_encoder_layers: 4
+  num_decoder_layers: 2
+  dim_feedforward: 1024
+  dropout: 0.1
+
+detr:
+  use_deformable_detr: true
+  num_tools: 7
+  num_queries: 48
+  num_decoder_layers: 6
+  nheads: 8
+  n_points: 4
+  dropout: 0.1
+  class_weight: 1.0
+  bbox_weight: 5.0
+  giou_weight: 2.0
+  focal_alpha: 0.25
+  focal_gamma: 2.0
+  # DN-DETR: reduced denoising queries
+  use_denoising: true
+  num_denoising_groups: 2
+  num_noise_per_group: 2
+  label_noise_prob: 0.2
+  box_noise_scale: 0.4
+  denoising_weight: 1.0
+
+reid:
+  embedding_dim: 256
+  supcon_weight: 1.0
+  supcon_temperature: 0.07
+  cross_consistency_weight: 0.0
+  dropout: 0.15
+
+tracker:
+  birth_score: 0.6
+  min_hits: 3
+  max_age: 30
+  reentry_ttl: 300
+  cost_threshold: 0.7
+  infer_score_threshold: 0.3
+
+losses:
+  detector_only: true
+  track_weight: 0.0
+  track_cls_weight: 1.0
+  track_giou_weight: 1.0
+  reid_weight: 0.0
+
+stage_flags:
+  use_geometry: false
+  use_occusolver: false
+  use_depth: false
+
+optimization:
+  lr: 2.0e-4
+  lora_lr: 1.0e-4
+  weight_decay: 1.0e-2
+  epochs: 100
+  min_lr: 1.0e-6
+  warmup_epochs: 5
+  gradient_clip_norm: 1.0
+  log_freq: 10
+
+wandb:
+  enabled: true
+  project: surgical-mot
+  entity: null
+  name: stage1-tdv-detect
+  group: cholec20-stage1-tdv
+  job_type: train
+  tags: ["stage1", "tdv", "lora", "denoising", "deformable"]
+  watch: gradients
+  watch_freq: 100

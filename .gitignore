@@ -1,49 +1,32 @@
-# Data and outputs (large)
+# Data and artifacts (local only)
 data/
-cholec_dataset/
-cholec_coco/
 outputs/
-*.pth
+wandb/
+logs/
+*.pth.tar
 *.pt
-!code/TrackEval/gt_data/Readme.md
-!code/TrackEval/tracker_output/Readme.md
+*.ckpt
 
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 *.egg-info/
-.eggs/
 dist/
 build/
-
-# Environments
-.env
-.venv
+.venv/
 venv/
-env/
 
-# IDE
+# IDE / OS
+.DS_Store
+*.swp
 .idea/
 .vscode/
-*.swp
-*.swo
 
-# Logs and experiment tracking
-wandb/
-*.log
-tb/
-runs/
+# Cursor machine-local state
+.cursor/hooks/
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Optional: uncomment if you don't want to track these
-# train_taxonomy.tsv
-# checkpoints/
+# Large vendored / optional trees (clone separately if needed)
+tips/
