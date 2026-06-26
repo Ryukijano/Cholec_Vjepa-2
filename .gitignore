@@ -1,63 +1,32 @@
+# Data and artifacts (local only)
+data/
+outputs/
+wandb/
+logs/
+*.pth.tar
+*.pt
+*.ckpt
+
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
 .venv/
-env/
-.env
+venv/
 
-# Data (download separately — see README)
-data/
-cholec_dataset/
-cholec_coco/
-
-# Training logs
-wandb/
-runs/
-*.log
-tb/
-
-# IDE
+# IDE / OS
+.DS_Store
+*.swp
 .idea/
 .vscode/
-*.swp
-.DS_Store
 
-# Jupyter
-.ipynb_checkpoints/
+# Cursor machine-local state
+.cursor/hooks/
 
-# Checkpoints outside LFS dirs (use LFS under outputs/ and weights/)
-*.pth
-*.pt
-!outputs/**/*.pth
-!outputs/**/*.pt
-!outputs/**/*.pth.tar
-!outputs/**/*.safetensors
-!outputs/**/*.ckpt
-!weights/**/*.pth
-!weights/**/*.pth.tar
-
-# Allow LFS trees
-outputs/**
-!outputs/README.md
-!outputs/**/
-!outputs/**/*
-weights/**
-!weights/README.md
-!weights/**/
-!weights/**/*
-
-# Large media (keep small plots in repo)
-*.mp4
-*.avi
-
-# TrackEval clone (optional submodule)
-TrackEval/
-
-# Temp
-tmp/
-.cache/
-outputs/
+# Large vendored / optional trees (clone separately if needed)
+tips/

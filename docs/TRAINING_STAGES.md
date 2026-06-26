@@ -2,8 +2,6 @@
 
 **Scope**: This document is the authoritative guide to the 3 (+1 optional) training stages of the Surgical MOT system. It explains *why* each stage exists, *what* it trains, *which parameters are frozen*, and *how the stages compose to produce object permanence*.
 
-> **Repo note (Cholec_Vjepa-2):** Shell runners referenced below live under `scripts/got_jepa/`. Master plan: [docs/plans/gyanateet_mot_understanding.md](plans/gyanateet_mot_understanding.md).
-
 **Audience**: Researchers and engineers training this pipeline on CholecTrack20 / Cholec80 (or similar).
 
 ---
