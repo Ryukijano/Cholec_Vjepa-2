@@ -7,7 +7,8 @@ V-JEPA2 + RF-DETR pipeline for **CholecTrack20** surgical tool detection, re-ide
 - **Tracking**: SurgicalTrackerV2 + HOTA eval (`code/tracker_v2.py`, `code/eval_hota.py`)
 
 Full architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)  
-**Project plan:** [docs/PLAN.md](docs/PLAN.md) → [GOT-JEPA MOT plan](docs/plans/gyanateet_mot_understanding.md)
+**Project plan:** [docs/PLAN.md](docs/PLAN.md) → [GOT-JEPA MOT plan](docs/plans/gyanateet_mot_understanding.md)  
+**Experiment history:** [docs/EXPERIMENT_TIMELINE.md](docs/EXPERIMENT_TIMELINE.md) · [docs/BRANCHES_AND_REPOS.md](docs/BRANCHES_AND_REPOS.md) · [AGENTS.md](AGENTS.md)
 
 ## Quick start (DGX Spark / Linux)
 
@@ -92,8 +93,18 @@ Pretrained checkpoints are under `outputs/mot/` (see [outputs/README.md](outputs
 ## Related
 
 - [CholecTrack20](https://github.com/CAMMA-public/cholectrack20)
-- [Gyanateet_tracking](https://github.com/) — GOT-JEPA MOT pipeline (same CT20 data on Spark)
+- [Gyanateet_tracking](https://github.com/Ryukijano/Gyanateet_tracking) — Spark development clone of GOT-JEPA MOT
+- [Temporal_Difference-Vision](https://github.com/Ryukijano/Temporal_Difference-Vision) — TDV fork (Stage 0 reference)
+
+## Documentation index
+
+| Doc | Purpose |
+|-----|---------|
+| [AGENTS.md](AGENTS.md) | Agent memory — preferences, facts, next actions |
+| [docs/EXPERIMENT_TIMELINE.md](docs/EXPERIMENT_TIMELINE.md) | Chronological runs and metric evolution |
+| [docs/BRANCHES_AND_REPOS.md](docs/BRANCHES_AND_REPOS.md) | Branches, paths, checkpoint locations |
+| [docs/PLAN.md](docs/PLAN.md) | Master plan index |
 
 ## Branch
 
-Active setup branch: `spark-lfs-setup` — Git LFS + DGX Spark paths.
+Active branches: `spark-lfs-setup` (docs + GOT-JEPA mirror), `tdv-pretraining` (AIRE TDV + DETR fixes). See [docs/BRANCHES_AND_REPOS.md](docs/BRANCHES_AND_REPOS.md).

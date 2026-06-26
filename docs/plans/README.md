@@ -6,6 +6,8 @@ Canonical planning docs for **Cholec_Vjepa-2** (dual pipeline: V-JEPA2 SurgiTrac
 |----------|-------------|
 | [gyanateet_mot_understanding.md](gyanateet_mot_understanding.md) | Master plan — GOT-JEPA four-stage MOT on CholecTrack20 (problem, architecture, stages, research context) |
 | [../TRAINING_STAGES.md](../TRAINING_STAGES.md) | Authoritative stage-by-stage training guide (frozen params, losses, launch commands) |
+| [../EXPERIMENT_TIMELINE.md](../EXPERIMENT_TIMELINE.md) | Chronological experiment log — runs, metrics, blockers |
+| [../BRANCHES_AND_REPOS.md](../BRANCHES_AND_REPOS.md) | GitHub branches and local paths |
 | [../ARCHITECTURE.md](../ARCHITECTURE.md) | Dual-Expert SurgiTrack++ (RF-DETR + V-JEPA2 Re-ID) |
 | [../agent/](../agent/) | Cursor/agent handoff notes (repo understanding, V-JEPA integration) |
 

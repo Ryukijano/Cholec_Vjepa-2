@@ -22,3 +22,5 @@ This repository combines two surgical tracking research lines on **CholecTrack20
 - Full HOTA eval on CT20 test: **pending** (infra wired, needs tuned tracker + full clips)
 
 Start here: [plans/gyanateet_mot_understanding.md](plans/gyanateet_mot_understanding.md)
+
+**History:** [EXPERIMENT_TIMELINE.md](EXPERIMENT_TIMELINE.md) · **Repos:** [BRANCHES_AND_REPOS.md](BRANCHES_AND_REPOS.md) · **Agents:** [../AGENTS.md](../AGENTS.md)
