@@ -1,5 +1,7 @@
 # Branches, repos, and where code lives
 
+> **Start here for repo choice:** [REPO_ROLES.md](REPO_ROLES.md) — `REPO_ID`, `PIPELINE`, and branch markers for agents.
+
 ## GitHub repositories
 
 | Repo | URL | Role |

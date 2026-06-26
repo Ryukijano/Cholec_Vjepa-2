@@ -2,6 +2,17 @@
 
 Agent memory for the unified surgical tracking repo ([Ryukijano/Cholec_Vjepa-2](https://github.com/Ryukijano/Cholec_Vjepa-2)).
 
+> **REPO_MARKER** `REPO_ID=cholec_vjepa_2` · **two pipelines** — pick branch + folder before editing  
+>
+> | Pipeline | Marker | Path | Branch |
+> |----------|--------|------|--------|
+> | GOT-JEPA MOT | `got_jepa_mot` | `core_app/` | `spark-lfs-setup` |
+> | V-JEPA2 SurgiTrack++ | `vjepa2_surgitrack` | `code/` | `main` |
+> | AIRE TDV / DETR fix | `aire_experiments` | `pretrain_tdv.py`, configs | `tdv-pretraining` |
+>
+> **Spark GOT-JEPA canonical dev:** [Gyanateet_tracking](https://github.com/Ryukijano/Gyanateet_tracking).  
+> **Repo map:** [docs/REPO_ROLES.md](docs/REPO_ROLES.md)
+
 ## Project overview
 
 Two research lines on **CholecTrack20**:
@@ -9,6 +20,7 @@ Two research lines on **CholecTrack20**:
 1. **GOT-JEPA MOT** (`core_app/`, `configs/train_mot/`) — four-stage pipeline: DETR teacher → JEPA SSL → joint fine-tune → OccuSolver.
 2. **V-JEPA2 SurgiTrack++** (`code/`) — RF-DETR + V-JEPA2 Re-ID + SurgicalTrackerV2.
 
+**Repo roles:** [docs/REPO_ROLES.md](docs/REPO_ROLES.md)  
 **Experiment history:** [docs/EXPERIMENT_TIMELINE.md](docs/EXPERIMENT_TIMELINE.md)  
 **Plan:** [docs/plans/gyanateet_mot_understanding.md](docs/plans/gyanateet_mot_understanding.md)  
 **Branches:** [docs/BRANCHES_AND_REPOS.md](docs/BRANCHES_AND_REPOS.md)
