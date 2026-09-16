@@ -38,6 +38,7 @@ from typing import Dict, Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.distributions import Normal
 
 from .predictor import PerTrackModelPredictor
 
@@ -110,6 +111,76 @@ def covariance_loss(omega_exp: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     return (off_diag.pow(2).sum()) / (D + eps)
 
 
+def visreg_loss(
+    z: torch.Tensor,
+    num_slices: int = 64,
+    scale_weight: float = 1.0,
+    shape_weight: float = 1.0,
+    center_weight: float = 1.0,
+) -> Tuple[torch.Tensor, Dict[str, float]]:
+    """
+    VISReg: Variance-Invariance-Sketching Regularization.
+
+    Replaces the VICReg-style covariance loss with a decoupled
+    scale + shape + center regularizer that has non-vanishing
+    gradient at collapse (Wu et al., 2026).
+
+    L_scale  = (1/D) * Σ_j (1 - σ_j(z))²       — per-dim unit variance
+    L_shape  = (1/K) * Σ_k ||sort(z̃ w_k) - q_N||²  — SWD to isotropic Gaussian
+    L_center = (1/D) * Σ_j μ_j²                 — zero mean per dim
+
+    Args:
+        z: (N, D) expanded student output.
+        num_slices: K random projection directions for SWD.
+        scale_weight: weight for L_scale.
+        shape_weight: weight for L_shape.
+        center_weight: weight for L_center.
+
+    Returns:
+        (total_loss, {'scale': float, 'shape': float, 'center': float})
+    """
+    N, D = z.shape
+    if N < 2:
+        zero = z.new_tensor(0.0)
+        return zero, {'scale': 0.0, 'shape': 0.0, 'center': 0.0}
+
+    # 1. Center loss — zero mean per dimension
+    mu = z.mean(dim=0)                                   # (D,)
+    l_center = mu.pow(2).mean()
+
+    # 2. Scale loss — unit variance per dimension
+    z_cent = z - mu.unsqueeze(0)                         # (N, D)
+    std = z_cent.std(dim=0, unbiased=False)              # (D,)
+    l_scale = (1.0 - std).pow(2).mean()
+
+    # 3. Shape loss — Sliced Wasserstein Distance to isotropic Gaussian
+    #    Normalize out scale, then project onto K random directions
+    std_safe = std.clamp(min=1e-6)
+    z_norm = z_cent / std_safe.detach()                  # (N, D), detached std for no grad through scale
+
+    # Random projection directions (D, K) — resampled each call (stochastic)
+    W = torch.randn(D, num_slices, device=z.device, dtype=z.dtype)
+    W = W / W.norm(p=2, dim=0, keepdim=True)             # unit-norm columns
+
+    # Project and sort: (N, K)
+    projections = z_norm @ W
+    p_sorted = torch.sort(projections, dim=0).values
+
+    # Gaussian target quantiles
+    u = torch.arange(1, N + 1, device=z.device, dtype=z.dtype) / (N + 1)
+    target = Normal(0.0, 1.0).icdf(u)                    # (N,)
+
+    l_shape = (p_sorted - target.unsqueeze(1)).pow(2).mean()
+
+    total = scale_weight * l_scale + shape_weight * l_shape + center_weight * l_center
+
+    return total, {
+        'scale': float(l_scale.item()),
+        'shape': float(l_shape.item()),
+        'center': float(l_center.item()),
+    }
+
+
 class GOTJEPAWrapper(nn.Module):
     """
     Ties together the frozen teacher, trainable student, ProjNet, and
@@ -118,6 +189,13 @@ class GOTJEPAWrapper(nn.Module):
     The caller is responsible for feeding the *clean* current-frame
     features to the teacher and the *corrupted* current-frame features
     to the student. Reference history is shared.
+
+    Regularization modes:
+      - ``'vicreg'`` (default): VICReg-style off-diagonal covariance loss
+        (original GOT-JEPA paper Eq. 3).
+      - ``'visreg'``: VISReg regularization (Wu et al., 2026) — decoupled
+        scale + shape (SWD) + center losses with non-vanishing gradient
+        at collapse. Better for small datasets and OOD generalization.
     """
 
     def __init__(
@@ -127,6 +205,11 @@ class GOTJEPAWrapper(nn.Module):
         expander_dim_mul: int = 4,
         inv_weight: float = 1.0,
         cov_weight: float = 0.5,
+        reg_mode: str = 'vicreg',
+        visreg_num_slices: int = 64,
+        visreg_scale_weight: float = 1.0,
+        visreg_shape_weight: float = 1.0,
+        visreg_center_weight: float = 1.0,
     ):
         super().__init__()
 
@@ -144,6 +227,11 @@ class GOTJEPAWrapper(nn.Module):
 
         self.inv_weight = inv_weight
         self.cov_weight = cov_weight
+        self.reg_mode = reg_mode
+        self.visreg_num_slices = visreg_num_slices
+        self.visreg_scale_weight = visreg_scale_weight
+        self.visreg_shape_weight = visreg_shape_weight
+        self.visreg_center_weight = visreg_center_weight
 
     def _freeze_teacher(self) -> None:
         for p in self.teacher.parameters():
@@ -185,19 +273,38 @@ class GOTJEPAWrapper(nn.Module):
         # Invariance: student should match teacher despite corruption.
         l_inv = invariance_loss(omega_s, omega_t)
 
-        # Covariance: expand student output, penalise off-diagonal covariance.
+        # Regularization on expanded student output.
         omega_s_exp = self.expander(omega_s)
-        l_cov = covariance_loss(omega_s_exp)
 
-        total = self.inv_weight * l_inv + self.cov_weight * l_cov
-
-        return {
-            'loss': total,
-            'loss_dict': {
+        if self.reg_mode == 'visreg':
+            l_reg, reg_components = visreg_loss(
+                omega_s_exp,
+                num_slices=self.visreg_num_slices,
+                scale_weight=self.visreg_scale_weight,
+                shape_weight=self.visreg_shape_weight,
+                center_weight=self.visreg_center_weight,
+            )
+            total = self.inv_weight * l_inv + self.cov_weight * l_reg
+            loss_dict = {
+                'jepa_inv': float(l_inv.item()),
+                'jepa_reg': float(l_reg.item()),
+                'jepa_reg_scale': reg_components['scale'],
+                'jepa_reg_shape': reg_components['shape'],
+                'jepa_reg_center': reg_components['center'],
+                'jepa_total': float(total.item()),
+            }
+        else:
+            l_cov = covariance_loss(omega_s_exp)
+            total = self.inv_weight * l_inv + self.cov_weight * l_cov
+            loss_dict = {
                 'jepa_inv': float(l_inv.item()),
                 'jepa_cov': float(l_cov.item()),
                 'jepa_total': float(total.item()),
-            },
+            }
+
+        return {
+            'loss': total,
+            'loss_dict': loss_dict,
             'omega_student': omega_s,
             'omega_teacher': omega_t,
         }

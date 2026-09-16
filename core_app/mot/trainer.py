@@ -233,12 +233,20 @@ class MOTTrainer:
             if init_ckpt:
                 self._load_stage1_weights_for_jepa(init_ckpt)
 
+        # Stage 3: load Stage 2 checkpoint (encoder LoRA + JEPA-pretrained
+        # per-track predictor + DETR + ReID from Stage 1/2).
+        if self.stage == 'stage3_joint':
+            init_ckpt = config.get('meta', {}).get('load_checkpoint')
+            if init_ckpt:
+                self._load_stage2_weights_for_joint(init_ckpt)
+
         self.optimizer = self._build_optimizer()
         self.scheduler = self._build_scheduler()
 
         self.current_epoch = 0
         self.global_step = 0
         self.best_val_loss = float('inf')
+        self.best_val_map = 0.0
 
         self.output_dir = Path(config.get('meta', {}).get('folder', 'outputs/mot'))
         if self.is_main:
@@ -307,12 +315,57 @@ class MOTTrainer:
             self.jepa_wrapper.teacher.load_state_dict(self.model.per_track_predictor.state_dict())
             self.jepa_wrapper._freeze_teacher()
 
+    def _load_stage2_weights_for_joint(self, path: str) -> None:
+        """Load Stage 2 checkpoint into the Stage 3 model.
+
+        Stage 2 checkpoint contains the full SurgicalMOTSystem state dict
+        (encoder with LoRA adapters, JEPA-pretrained per-track predictor,
+        DETR head, ReID head, neck) plus the JEPA student wrapper.
+        We load the model state dict with strict=False to allow any minor
+        architecture differences (e.g. new modules added in Stage 3).
+        """
+        ckpt = load_checkpoint(path, map_location=str(self.device))
+        missing, unexpected = self.model.load_state_dict(ckpt['model'], strict=False)
+        if self.is_main:
+            # Categorise missing keys for diagnostics
+            enc_missing = [k for k in missing if k.startswith('encoder.')]
+            other_missing = [k for k in missing if not k.startswith('encoder.')]
+            self.logger.info(
+                "Stage-3 init: loaded Stage-2 weights from %s (epoch %s)",
+                path, ckpt.get('epoch'),
+            )
+            if enc_missing:
+                self.logger.warning(
+                    "Stage-3 init: %d encoder keys missing (LoRA/base mismatch?)",
+                    len(enc_missing),
+                )
+            if other_missing:
+                self.logger.info(
+                    "Stage-3 init: %d non-encoder keys missing (expected for new modules)",
+                    len(other_missing),
+                )
+            if unexpected:
+                self.logger.warning(
+                    "Stage-3 init: %d unexpected keys in Stage-2 checkpoint",
+                    len(unexpected),
+                )
+            if ckpt.get('best_val_map') is not None:
+                self.logger.info(
+                    "Stage-2 best val mAP: %s", ckpt['best_val_map'],
+                )
+
     def _setup_jepa_wrapper(self) -> None:
         from .jepa import GOTJEPAWrapper
+        loss_cfg = self.config.get('losses', {})
         self.jepa_wrapper = GOTJEPAWrapper(
             student_predictor=self.model.per_track_predictor,
-            inv_weight=self.config.get('losses', {}).get('jepa_inv_weight', 1.0),
-            cov_weight=self.config.get('losses', {}).get('jepa_cov_weight', 0.5),
+            inv_weight=loss_cfg.get('jepa_inv_weight', 1.0),
+            cov_weight=loss_cfg.get('jepa_cov_weight', 0.5),
+            reg_mode=loss_cfg.get('jepa_reg_mode', 'vicreg'),
+            visreg_num_slices=loss_cfg.get('jepa_visreg_num_slices', 64),
+            visreg_scale_weight=loss_cfg.get('jepa_visreg_scale_weight', 1.0),
+            visreg_shape_weight=loss_cfg.get('jepa_visreg_shape_weight', 1.0),
+            visreg_center_weight=loss_cfg.get('jepa_visreg_center_weight', 1.0),
         ).to(self.device)
 
         # Corruption bank for the student branch.
@@ -849,10 +902,12 @@ class MOTTrainer:
         is_best = False
         if val_stats:
             val_loss = val_stats.get('total', float('inf'))
-            is_best = val_loss < self.best_val_loss
+            val_map = val_stats.get('mAP50', 0.0)
+            is_best = val_map > self.best_val_map
             if is_best:
+                self.best_val_map = val_map
                 self.best_val_loss = val_loss
-                self.wb.log_scalars({"epoch/best_val_loss": self.best_val_loss}, step=self.global_step)
+                self.wb.log_scalars({"epoch/best_val_map": self.best_val_map, "epoch/best_val_loss": self.best_val_loss}, step=self.global_step)
 
         # Save latest.
         save_checkpoint(
@@ -864,6 +919,7 @@ class MOTTrainer:
                 'scheduler': self.scheduler.state_dict(),
                 'config': self.config,
                 'stage': self.stage,
+                'best_val_map': self.best_val_map,
             },
             path=str(self.output_dir / 'latest.pth.tar'),
         )
@@ -907,6 +963,8 @@ class MOTTrainer:
             self.jepa_wrapper.load_state_dict(ckpt['jepa'], strict=False)
 
         ckpt_epoch = int(ckpt.get('epoch', -1))
+        if 'best_val_map' in ckpt:
+            self.best_val_map = float(ckpt['best_val_map'])
         if start_epoch is not None:
             self.current_epoch = start_epoch
         else:

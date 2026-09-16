@@ -9,11 +9,11 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$REPO_ROOT"
 
 module load miniforge 2>/dev/null || true
-conda activate surgi_world_track_cuda 2>/dev/null || true
+conda activate endofm-lv 2>/dev/null || true
 
 OUT_ROOT="/scratch/kcwp264/data/surgi_world_track/ssl_corpus"
-STAGE1_CONFIG="configs/train_mot/dinov2/cholec20-mot-stage1-supervised.yaml"
-STAGE1_CKPT="outputs/mot/cholec20-stage1-supervised/best.pth.tar"
+STAGE1_CONFIG="configs/train_mot/dinov2/cholec20-mot-stage1-surgenet.yaml"
+STAGE1_CKPT="outputs/mot/cholec20-stage1-surgenet/best.pth.tar"
 
 LOG_DIR="$REPO_ROOT/logs/ssl_build"
 mkdir -p "$LOG_DIR"
@@ -31,7 +31,7 @@ for RANK in 0 1 2; do
     --stage1_checkpoint "$STAGE1_CKPT" \
     --out_root "$OUT_ROOT" \
     --device cuda \
-    --score_threshold 0.5 \
+    --score_threshold 0.25 \
     --rank "$RANK" \
     --world_size 3 \
     > "$LOG_DIR/rank${RANK}.log" 2>&1 &

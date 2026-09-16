@@ -203,10 +203,14 @@ class SurgicalMOTSystem(nn.Module):
             neck_encoder_type = 'vjepa' if encoder_dim == 768 else 'vjepa_large'
 
         # --- 2. Encoder-aware neck (SimpleFPN / VJEPANeck) -------- #
+        _patch_size = 14  # DINOv2 ViT-B/14 and V-JEPA use 14×14 patches
+        _spatial_grid = img_size // _patch_size
         self.encoder_neck = EncoderNeck(
             encoder_type=neck_encoder_type,
             neck_dim=neck_dim,
             override_embed_dim=encoder_dim,
+            override_spatial_h=_spatial_grid,
+            override_spatial_w=_spatial_grid,
             vjepa_temporal_reduction=vjepa_temporal_reduction,
             vjepa_multi_scale=vjepa_multi_scale,
         )

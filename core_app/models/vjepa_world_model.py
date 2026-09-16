@@ -4,6 +4,7 @@ Main architecture integrating all components.
 """
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from typing import Optional, List, Dict, Tuple, Any
 from pathlib import Path
 
@@ -384,27 +385,91 @@ class Dinov2EncoderWrapper(nn.Module):
         # Load TDV-pretrained or custom encoder checkpoint
         if encoder_checkpoint is not None and Path(encoder_checkpoint).exists():
             print(f"Loading encoder checkpoint: {encoder_checkpoint}")
-            ckpt = torch.load(encoder_checkpoint, map_location='cpu', weights_only=True)
-            # The checkpoint may be a raw state dict or a dict with 'model_state_dict'
+            ckpt = torch.load(encoder_checkpoint, map_location='cpu', weights_only=False)
+            # The checkpoint may be a raw state dict, a TDV dict with
+            # 'model_state_dict', or a Stage 1/2 dict with 'model' containing
+            # the full SurgicalMOTSystem state dict.
             if isinstance(ckpt, dict) and 'model_state_dict' in ckpt:
                 # TDV checkpoint — extract frame encoder weights
                 sd = ckpt['model_state_dict']
-                # Keys may be prefixed with 'frame_encoder.encoder.'
                 encoder_sd = {}
                 for k, v in sd.items():
                     if k.startswith('frame_encoder.encoder.'):
                         encoder_sd[k.replace('frame_encoder.encoder.', '')] = v
                 if encoder_sd:
-                    msg = self.encoder.load_state_dict(encoder_sd, strict=False)
-                    print(f"  Loaded TDV frame encoder: {len(encoder_sd)} keys")
+                    sd = encoder_sd
+                    print(f"  Loaded TDV frame encoder: {len(sd)} keys")
                 else:
-                    # Try loading as raw encoder state dict
-                    msg = self.encoder.load_state_dict(sd, strict=False)
                     print(f"  Loaded encoder checkpoint: {len(sd)} keys")
+            elif isinstance(ckpt, dict) and 'model' in ckpt:
+                # Stage 1/2 checkpoint — extract encoder weights from the
+                # full model state dict.  Keys are prefixed with
+                # 'encoder.encoder.' and LoRA modules use '.base.' for the
+                # frozen base weight (e.g. 'blocks.0.attn.qkv.base.weight').
+                # We strip the prefix and convert '.base.' → '.' so the
+                # weights load into the plain DINOv2 before LoRA injection.
+                # LoRA-specific keys (lora_A, lora_B) are skipped here; they
+                # will be loaded later from the Stage 2 checkpoint via
+                # trainer.load_checkpoint().
+                full_sd = ckpt['model']
+                sd = {}
+                skipped_lora = 0
+                for k, v in full_sd.items():
+                    if not k.startswith('encoder.encoder.'):
+                        continue
+                    stripped = k[len('encoder.encoder.'):]
+                    if '.lora_A' in stripped or '.lora_B' in stripped:
+                        skipped_lora += 1
+                        continue
+                    stripped = stripped.replace('.base.', '.')
+                    sd[stripped] = v
+                print(f"  Loaded encoder from model checkpoint: {len(sd)} keys "
+                      f"(skipped {skipped_lora} LoRA params — loaded later)")
             else:
-                # Raw state dict
-                msg = self.encoder.load_state_dict(ckpt, strict=False)
-                print(f"  Loaded raw encoder checkpoint: {len(ckpt)} keys")
+                sd = ckpt
+                print(f"  Loaded raw encoder checkpoint: {len(sd)} keys")
+
+            # Replace model pos_embed directly with checkpoint pos_embed.
+            # SurgeNetDINO was trained at 336×336 → 577 tokens (24×24 + 1 cls).
+            # torch.hub DINOv2 defaults to 518×518 → 1370 tokens (37×37 + 1 cls).
+            # Previously we interpolated 577→1370 to match the model, then DINOv2
+            # internally interpolated 1370→577 at runtime (336px input) — double
+            # interpolation that degrades spatial features and causes ~0.5% mAP.
+            # Fix: load checkpoint pos_embed (577 tokens) directly into the model.
+            # At runtime with img_size=336, DINOv2 produces 576 patches + 1 cls =
+            # 577 tokens, matching exactly — no interpolation needed.
+            if 'pos_embed' in sd and 'pos_embed' in self.encoder.state_dict():
+                ckpt_pe = sd['pos_embed']          # (1, N_ckpt, D)
+                model_pe = self.encoder.pos_embed   # (1, N_model, D)
+                N_ckpt = ckpt_pe.shape[1]
+                N_model = model_pe.shape[1]
+                if N_ckpt != N_model:
+                    num_reg = getattr(self.encoder, 'num_register_tokens', 0)
+                    N_ckpt_patch = N_ckpt - 1 - num_reg
+                    gs_ckpt = int(N_ckpt_patch ** 0.5)
+                    print(f"  pos_embed: loading checkpoint's {N_ckpt} tokens "
+                          f"(grid {gs_ckpt}x{gs_ckpt}) directly — no interpolation")
+                    # Directly replace model's pos_embed with checkpoint's
+                    with torch.no_grad():
+                        self.encoder.pos_embed.data = ckpt_pe.clone()
+                    # Remove from sd so load_state_dict doesn't try to load it
+                    del sd['pos_embed']
+
+            # Remove any remaining shape-mismatched keys to avoid RuntimeError
+            model_sd = self.encoder.state_dict()
+            safe_sd = {}
+            skipped = []
+            for k, v in sd.items():
+                if k in model_sd and model_sd[k].shape != v.shape:
+                    skipped.append(f"  {k}: ckpt {list(v.shape)} vs model {list(model_sd[k].shape)}")
+                    continue
+                safe_sd[k] = v
+            if skipped:
+                print(f"  Skipping {len(skipped)} shape-mismatched keys:")
+                for s in skipped:
+                    print(s)
+
+            msg = self.encoder.load_state_dict(safe_sd, strict=False)
             if msg.missing_keys:
                 print(f"  Missing keys: {len(msg.missing_keys)}")
             if msg.unexpected_keys:
@@ -544,10 +609,14 @@ class WorldModel(nn.Module):
             self.fusion_neck = None
 
         # 3. Encoder-Aware Feature Neck (SimpleFPN for DINOv2, VJEPANeck for VJEPA)
+        _patch_size = 14  # DINOv2 ViT-B/14 and V-JEPA use 14×14 patches
+        _spatial_grid = img_size // _patch_size
         self.encoder_neck = EncoderNeck(
             encoder_type=_neck_type,
             neck_dim=neck_dim,
             override_embed_dim=encoder_dim,
+            override_spatial_h=_spatial_grid,
+            override_spatial_w=_spatial_grid,
             vjepa_temporal_reduction=vjepa_temporal_reduction,
             vjepa_multi_scale=vjepa_multi_scale,
         )

@@ -17,8 +17,8 @@ if command -v module >/dev/null 2>&1; then
   module load miniforge || true
 fi
 
-SURGI_ENV="${SURGI_ENV:-surgi_track}"
-FALLBACK_ENV="surgi_world_track_cuda"
+SURGI_ENV="${SURGI_ENV:-endofm-lv}"
+FALLBACK_ENV="endofm-lv"
 
 ACTIVE_ENV="${CONDA_DEFAULT_ENV:-${CONDA_PREFIX##*/}}"
 if [ -n "${ACTIVE_ENV}" ] && { [ "${ACTIVE_ENV}" = "${SURGI_ENV}" ] || [ "${ACTIVE_ENV}" = "${FALLBACK_ENV}" ]; }; then
@@ -76,7 +76,7 @@ if [ "${ACTIVE_ENV:-${CONDA_DEFAULT_ENV:-${CONDA_PREFIX##*/}}}" != "${SURGI_ENV}
   exit 1
 fi
 
-CONFIG="configs/train_mot/dinov2/cholec20-mot-stage1-supervised.yaml"
+CONFIG="configs/train_mot/dinov2/cholec20-mot-stage1-surgenet.yaml"
 
 # Optional override for explicit GPU count, otherwise default to 3.
 REQUESTED_GPUS="${STAGE1_GPUS:-3}"

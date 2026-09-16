@@ -1,0 +1,154 @@
+# =============================================================================
+# Stage 2 — GOT-JEPA SSL predictor pretraining on leak-free Cholec80 + CT20.
+# =============================================================================
+#
+# Matches Stage 1 SurgeNetDINO architecture (ViT-B/14, 768-dim, 48 queries).
+#
+# Prerequisites:
+#   1. Stage 1 SurgeNetDINO checkpoint at meta.load_checkpoint.
+#   2. Unified SSL corpus built by:
+#        python -m scripts.got_jepa.build_ssl_corpus \
+#          --stage1_config configs/train_mot/dinov2/cholec20-mot-stage1-surgenet.yaml \
+#          --stage1_checkpoint outputs/mot/cholec20-stage1-surgenet/best.pth.tar \
+#          --out_root /scratch/kcwp264/data/surgi_world_track/ssl_corpus \
+#          --device cuda:0 \
+#          --score_threshold 0.25
+#
+# Trainable: student per-track predictor + ProjNet + Expander.
+# Frozen:    DINOv2 encoder (+LoRA), neck, DETR head, ReID head, teacher predictor.
+#
+# Usage (3x L40S interactive):
+#   torchrun --standalone --nproc_per_node=3 \
+#     -m core_app.mot.main \
+#     --fname configs/train_mot/dinov2/cholec80-ct20-stage2-jepa-surgenet.yaml \
+#     --devices cuda
+# =============================================================================
+
+meta:
+  stage: stage2_jepa
+  folder: outputs/mot/cholec80-ct20-stage2-jepa-surgenet
+  name: cholec80-ct20-stage2-jepa-surgenet
+  seed: 42
+  dtype: bfloat16
+  # Teacher predictor and frozen heads are initialised from this checkpoint.
+  load_checkpoint: outputs/mot/cholec20-stage1-surgenet/best.pth.tar
+
+data:
+  dataset_type: MOTCholecDataset
+  per_track_min_visible_frames: 1   # pseudo-labels are sparse; fill refs from cur frame
+  datasets:
+    - /scratch/kcwp264/data/surgi_world_track/ssl_corpus
+  clip_length: 3
+  img_size: 336
+  batch_size: 6             # per-GPU; ViT-B is heavier than ViT-S, 6*3=18 effective
+  num_workers: 8
+  pin_memory: true
+
+model:
+  encoder_type: dinov2
+  model_name: dinov2_vitb14   # ViT-B — MUST match Stage 1 checkpoint
+  encoder_dim: 768
+  neck_dim: 256
+  layer_indices: [-1]
+  # SurgeNetDINO: same checkpoint as Stage 1
+  encoder_checkpoint: /scratch/kcwp264/checkpoints/surgenet_dino/DINOv2_ViTb14_size336_SurgeNetXL.pth
+  use_torch_hub: true
+  # LoRA adapters — frozen in Stage 2 (loaded from Stage 1 checkpoint)
+  encoder_lora:
+    enable: true
+    rank: 16
+    alpha: 32
+    dropout: 0.05
+    target_modules: ['qkv', 'proj', 'fc1', 'fc2']
+    start_block: 0
+    end_block: null
+
+predictor:
+  dim: 256
+  num_heads: 8
+  num_encoder_layers: 4
+  num_decoder_layers: 2
+  dim_feedforward: 1024
+  dropout: 0.1
+
+# DETR / ReID / tracker are loaded from the Stage 1 checkpoint for teacher
+# features but are frozen throughout Stage 2. These fields mirror Stage 1
+# so build_model_from_config reconstructs an identical architecture.
+detr:
+  use_deformable_detr: true
+  num_tools: 7
+  num_queries: 48          # MUST match Stage 1 (was 16 in old configs — mismatch!)
+  num_decoder_layers: 6
+  nheads: 8
+  n_points: 4
+  dropout: 0.1
+  class_weight: 1.0
+  bbox_weight: 5.0
+  giou_weight: 2.0
+  focal_alpha: 0.25
+  focal_gamma: 2.0
+  use_denoising: true
+  num_denoising_groups: 2
+  num_noise_per_group: 2
+  label_noise_prob: 0.2
+  box_noise_scale: 0.4
+  denoising_weight: 1.0
+
+reid:
+  embedding_dim: 256
+  supcon_weight: 1.0
+  supcon_temperature: 0.07
+  cross_consistency_weight: 0.0
+  dropout: 0.15
+
+tracker:
+  birth_score: 0.6
+  min_hits: 3
+  max_age: 30
+  reentry_ttl: 300
+  cost_threshold: 0.7
+  infer_score_threshold: 0.3
+
+augmentation:
+  # SurgicalCorruption — applied ONLY to the student's current frame.
+  smoke_p: 0.45
+  blood_p: 0.25
+  spec_p:  0.35
+  blur_p:  0.35
+  jitter_p: 0.5
+  cutout_p: 0.25
+
+losses:
+  jepa_inv_weight: 25.0   # α — GOT-JEPA paper best ratio (invariance dominates)
+  jepa_cov_weight: 1.0    # β — weight for regularization term (VICReg cov OR VISReg)
+  # VISReg regularization (Wu et al., 2026) — decoupled scale+shape+center
+  # with non-vanishing gradient at collapse. Better for small surgical datasets.
+  jepa_reg_mode: visreg          # 'vicreg' (original) or 'visreg' (new)
+  jepa_visreg_num_slices: 64     # K random projections for SWD shape loss
+  jepa_visreg_scale_weight: 1.0  # L_scale: per-dim unit variance
+  jepa_visreg_shape_weight: 1.0  # L_shape: SWD to isotropic Gaussian
+  jepa_visreg_center_weight: 1.0 # L_center: zero mean per dim
+
+stage_flags:
+  use_geometry: false
+  use_occusolver: false    # disabled for Stage 2 — not needed for SSL, saves memory
+
+optimization:
+  lr: 5.0e-4
+  weight_decay: 1.0e-2
+  epochs: 30
+  min_lr: 1.0e-6
+  warmup_epochs: 1
+  gradient_clip_norm: 1.0
+  log_freq: 20
+
+wandb:
+  enabled: true
+  project: surgical-mot
+  entity: null
+  name: stage2-jepa-surgenet-3gpu
+  group: cholec80-ssl-surgenet
+  job_type: train
+  tags: ["stage2", "ssl", "cholec80", "surgenet", "vitb14", "3gpu", "l40s"]
+  watch: gradients
+  watch_freq: 100

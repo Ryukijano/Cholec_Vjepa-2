@@ -267,13 +267,13 @@ class EncoderNeck(nn.Module):
 
     ENCODER_CONFIGS = {
         'dinov2': {
-            'spatial_h': 28,
-            'spatial_w': 28,
+            'spatial_h': 24,
+            'spatial_w': 24,
             'embed_dim': 768,
         },
         'dinov2_large': {
-            'spatial_h': 28,
-            'spatial_w': 28,
+            'spatial_h': 24,
+            'spatial_w': 24,
             'embed_dim': 1024,
         },
         'vjepa': {

@@ -557,6 +557,8 @@ class DeformableSurgicalToolDetector(nn.Module):
         else:
             pred_logits = self.class_embed(tgt).clamp(-10.0, 10.0)  # (B, N_q, num_tools)
             pred_boxes = self.bbox_embed(tgt).sigmoid()  # (B, N_q, 4)
+            denoising_logits = None
+            denoising_boxes = None
 
         pred = {
             'class_logits': pred_logits,
@@ -565,7 +567,7 @@ class DeformableSurgicalToolDetector(nn.Module):
 
         out = {'pred': pred}
 
-        if targets is not None and self.training:
+        if targets is not None:
             amp_device = 'cuda' if pred_logits.is_cuda else 'cpu'
             finite = torch.isfinite(pred_logits).all() and torch.isfinite(pred_boxes).all()
             if denoising_logits is not None:

@@ -42,7 +42,7 @@ def _annot_to_tracks(
     CholecTrack20 JSON format:
       - ``intraoperative_track``: int track id
       - ``tool_bbox``: [x, y, w, h] in normalised [0, 1] coords
-      - ``instrument``: int class id in 1..7
+      - ``instrument``: int class id in 0..6
       - ``occluded``: 1 if partially occluded (still visible, has bbox)
       - ``operator``: 0-3 surgeon side
       - ``phase``: surgical phase index
@@ -67,7 +67,7 @@ def _annot_to_tracks(
             continue
         out[int(tid)] = {
             'bbox': torch.tensor([cx, cy, nw, nh], dtype=torch.float32),
-            'cls': int(label) - 1,  # CholecTrack20 uses 1..7; shift to 0..6
+            'cls': int(label),  # CholecTrack20 uses 0-indexed IDs (0..6)
             'occluded': int(tool.get('occluded', 0) or 0),
             'operator': int(tool.get('operator', -1) or -1),
             'phase': int(tool.get('phase', -1) or -1),

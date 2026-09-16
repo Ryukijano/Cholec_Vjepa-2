@@ -849,7 +849,7 @@ class SurgicalToolDetector(nn.Module):
         result = {'pred': outputs}
 
         # Compute loss if targets provided
-        if targets is not None and self.training:
+        if targets is not None:
             class_logits = outputs['class_logits']
             pred_boxes_out = outputs.get('pred_boxes')
             indices = self.criterion.hungarian_matching(class_logits, pred_boxes_out, targets)
