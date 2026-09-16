@@ -1,0 +1,122 @@
+# =============================================================================
+# Leak-Free SSL Split for GOT-JEPA Pretraining on Cholec80 + CholecTrack20
+# =============================================================================
+#
+# Problem:
+#   CholecTrack20 is a subset of Cholec120 (= Cholec80 ∪ 40 extra videos).
+#   Videos VIDxx with xx ≤ 80 are identical to Cholec80's videoxx.
+#   Videos VIDxx with xx > 80 are Cholec120-only (not in Cholec80).
+#
+# Goal:
+#   Build an SSL corpus that includes as much unlabeled surgical footage as
+#   possible WITHOUT leaking any frame from the CholecTrack20 val/test splits.
+#
+# Logic:
+#   - CholecTrack20 Test set    → MUST be unseen until final evaluation.
+#   - CholecTrack20 Validation  → MUST be unseen during SSL (for early stopping).
+#   - CholecTrack20 Train       → Safe to use in SSL and in supervised stages.
+#
+# Result:
+#   73 Cholec80 videos (all except the 7 that overlap CT20 val/test)
+#   + 2 Cholec120-only videos from CT20 Training (VID96, VID103)
+#   = 75 leak-free SSL videos.
+#
+# References:
+#   - CholecTrack20 paper (CVPR 2025): https://arxiv.org/abs/2312.07352
+#   - CAMMA repo: https://github.com/CAMMA-public/cholectrack20
+#   - Overlap figure: https://github.com/CAMMA-public/cholectrack20/blob/main/images/ct20-overlap.png
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# CholecTrack20 splits (default: repo data/cholectrack20/)
+# -----------------------------------------------------------------------------
+cholectrack20:
+  root: data/cholectrack20
+
+  # 10 training videos — labeled with bboxes + track IDs.
+  # Used for: Stage 1 (supervised), Stage 2 (SSL), Stage 3 (joint fine-tune).
+  train:
+    - VID02
+    - VID04
+    - VID11
+    - VID13
+    - VID17
+    - VID23
+    - VID31
+    - VID37
+    - VID96    # Cholec120-only (not in Cholec80)
+    - VID103   # Cholec120-only
+
+  # 2 validation videos — ONLY for Stage 1 / Stage 3 early stopping.
+  # NEVER touched during SSL.
+  val:
+    - VID30
+    - VID110   # Cholec120-only
+
+  # 8 test videos — NEVER touched during any training stage.
+  test:
+    - VID01
+    - VID06
+    - VID07
+    - VID12
+    - VID25
+    - VID39
+    - VID92    # Cholec120-only
+    - VID111   # Cholec120-only
+
+
+# -----------------------------------------------------------------------------
+# Cholec80 exclusion list for SSL
+# -----------------------------------------------------------------------------
+# Any video in this list MUST be excluded from Cholec80 when building the
+# SSL corpus, because it corresponds to a CT20 validation or test video.
+#
+# Mapping: CT20 VID{N} ⟷ Cholec80 video{N:02d} for all N ≤ 80.
+# -----------------------------------------------------------------------------
+cholec80:
+  root: data/cholec80/frames
+
+  # Overlap with CT20 val (1) + CT20 test (6) = 7 videos to exclude.
+  exclude_from_ssl:
+    - video01   # = CT20 VID01 (test)
+    - video06   # = CT20 VID06 (test)
+    - video07   # = CT20 VID07 (test)
+    - video12   # = CT20 VID12 (test)
+    - video25   # = CT20 VID25 (test)
+    - video30   # = CT20 VID30 (val)
+    - video39   # = CT20 VID39 (test)
+
+
+# -----------------------------------------------------------------------------
+# Combined SSL corpus (for GOT-JEPA Stage 2 pretraining)
+# -----------------------------------------------------------------------------
+ssl_corpus:
+  # 73 videos from Cholec80 (80 - 7 excluded above).
+  cholec80_videos: >
+    video02, video03, video04, video05, video08, video09, video10, video11,
+    video13, video14, video15, video16, video17, video18, video19, video20,
+    video21, video22, video23, video24, video26, video27, video28, video29,
+    video31, video32, video33, video34, video35, video36, video37, video38,
+    video40, video41, video42, video43, video44, video45, video46, video47,
+    video48, video49, video50, video51, video52, video53, video54, video55,
+    video56, video57, video58, video59, video60, video61, video62, video63,
+    video64, video65, video66, video67, video68, video69, video70, video71,
+    video72, video73, video74, video75, video76, video77, video78, video79,
+    video80
+
+  # 2 extra Cholec120-only videos taken from CT20 Training (not in Cholec80).
+  cholectrack20_extras:
+    - VID96
+    - VID103
+
+  total_videos: 75
+  approx_hours: 52          # ~80 videos × 42 min/video × (75/80)
+
+
+# -----------------------------------------------------------------------------
+# Sanity check
+# -----------------------------------------------------------------------------
+# Assert: no SSL video ever coincides with CT20 val/test video.
+leak_check:
+  ssl_intersect_val_or_test: []   # must be empty by construction

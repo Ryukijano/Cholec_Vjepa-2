@@ -1,0 +1,89 @@
+# Stage 2 — GOT-JEPA teacher-student predictor pretraining.
+#
+# Goal: robust per-track filter predictor that produces the same ω̂
+# whether the current frame is clean or corrupted.
+#
+# Training only touches: student predictor + ProjNet + Expander.
+# Teacher predictor is FROZEN (initialised from Stage-1 checkpoint).
+
+meta:
+  stage: stage2_jepa
+  folder: outputs/mot/cholec20-stage2-jepa-pretrain
+  name: cholec20-mot-stage2-jepa-pretrain
+  seed: 42
+  dtype: bfloat16
+  # REQUIRED: the Stage-1 output checkpoint supplies the teacher.
+  load_checkpoint: outputs/mot/cholec20-stage1-supervised/best.pth.tar
+
+data:
+  dataset_type: MOTCholecDataset
+  datasets:
+    - data/cholectrack20
+  clip_length: 3
+  img_size: 392
+  batch_size: 4           # can be larger — only the predictor is trained
+  num_workers: 4
+  pin_memory: true
+
+model:
+  encoder_type: dinov2
+  model_name: dinov2_vits14   # ViT-S — same as Stage 1 (NOT vitb14)
+  encoder_dim: 384
+  neck_dim: 256
+  layer_indices: [-1]
+  use_torch_hub: true
+
+predictor:
+  dim: 256
+  num_heads: 8
+  num_encoder_layers: 4
+  num_decoder_layers: 2
+  dim_feedforward: 1024
+  dropout: 0.1
+
+# DETR / ReID / tracker fields are ignored in Stage 2 but kept for config reuse.
+detr:
+  use_deformable_detr: true
+  num_tools: 7
+  num_queries: 16
+  num_decoder_layers: 6
+  nheads: 8
+  n_points: 4
+reid:
+  embedding_dim: 256
+tracker:
+  birth_score: 0.6
+
+augmentation:
+  smoke_p: 0.4            # 2000 smoke instances in CholecTrack20
+  blood_p: 0.2
+  spec_p: 0.3
+  blur_p: 0.3
+  jitter_p: 0.5
+  cutout_p: 0.2
+
+losses:
+  jepa_inv_weight: 1.0    # α in Eq. 4 of GOT-JEPA
+  jepa_cov_weight: 0.5    # β in Eq. 4 of GOT-JEPA
+
+stage_flags:
+  use_geometry: false
+  use_occusolver: true     # enable visibility-gated pseudo-labels
+
+# OccuSolver configuration (CoTracker3 for visibility gating)
+occusolver:
+  cotracker_version: 3
+  cotracker_mode: online
+  num_query_points: 4
+  num_refine_steps: 0      # no refinement in Stage 2 (keep it fast)
+  use_depth: false
+  freeze: true
+
+optimization:
+  lr: 5.0e-4
+  weight_decay: 1.0e-2
+  epochs: 50
+  min_lr: 1.0e-6
+  warmup_epochs: 1
+  gradient_clip_norm: 1.0
+  log_freq: 20

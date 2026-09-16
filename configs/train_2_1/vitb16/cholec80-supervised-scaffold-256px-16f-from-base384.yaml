@@ -1,0 +1,106 @@
+app: vjepa_2_1_supervised
+
+nodes: 1
+tasks_per_node: 1
+cpus_per_task: 8
+mem_per_gpu: 48G
+
+folder: /mnt/scratch/scssali/dino_wm/vjepa_outputs/cholec80/supervised_scaffold_256px_16f_from_base384
+
+meta:
+  dtype: bfloat16
+  seed: 239
+  use_sdpa: true
+  load_checkpoint: false
+  save_every_freq: 1
+
+data:
+  dataset_type: VideoDataset
+  # This path can be overridden at launch time (e.g., staged NVMe path).
+  datasets:
+    - /mnt/scratch/scssali/cholec80/cholec80/frames
+  datasets_weights:
+    - 1.0
+  dataset_fpcs:
+    - 16
+  batch_size: 8
+  crop_size: 256
+  patch_size: 16
+  tubelet_size: 2
+  fps: 4
+  num_workers: 0
+  pin_mem: true
+  persistent_workers: false
+  # Cholec-20 test/val split (used for supervised scaffold training only)
+  include_videos:
+    - video01
+    - video06
+    - video07
+    - video12
+    - video25
+    - video30
+    - video39
+
+data_aug:
+  auto_augment: false
+  motion_shift: false
+  random_resize_aspect_ratio: [0.75, 1.35]
+  random_resize_scale: [0.3, 1.0]
+  reprob: 0.0
+
+model:
+  model_name: vit_base
+  pred_depth: 12
+  pred_embed_dim: 384
+  pred_num_heads: 12
+  use_mask_tokens: true
+  zero_init_mask_tokens: true
+  uniform_power: true
+  use_activation_checkpointing: false
+  use_rope: true
+  interpolate_rope: true
+  modality_embedding: true
+  has_cls_first: false
+  n_registers: 0
+  n_registers_predictor: 0
+  img_temporal_dim_size: 1
+  is_causal: false
+  pred_is_causal: false
+
+optimization:
+  epochs: 5
+  ipe: 10
+  lr: 1.0e-4
+  weight_decay: 0.01
+  clip_grad: 1.0
+  log_freq: 5
+
+supervised:
+  # Initialize from the successful pretraining run.
+  pretrained_checkpoint: /mnt/scratch/scssali/dino_wm/vjepa_outputs/cholec80/base_384px_16f_highutil/latest.pth.tar
+
+  encoder:
+    trainable: false
+
+  predictor:
+    enabled: false
+    trainable: false
+    return_all_tokens: true
+    context_keep_ratio: 0.5
+    aux_loss_weight: 0.01
+
+  rf_decoder:
+    enabled: true
+    out_channels: 3
+    loss_weight: 1.0
+
+  reid_head:
+    enabled: true
+    embedding_dim: 768
+    num_classes: null
+    pooling: mean
+    token_index: 0
+    normalize_embeddings: true
+    dropout: 0.0
+    ce_loss_weight: 1.0
+    embedding_l2_weight: 0.0

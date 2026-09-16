@@ -1,0 +1,105 @@
+# Stage 3 — Joint MOT fine-tune with the GOT-JEPA pretrained student.
+#
+# Loads:
+#   * Stage 1 checkpoint → neck, DETR, ReID, track manager.
+#   * Stage 2 checkpoint → student per-track predictor (replaces Stage 1 one).
+#
+# Unfreezes: student predictor, DETR decoder, ReID head, neck.
+# Keeps encoder frozen (toggle encoder LoRA later if desired).
+
+meta:
+  stage: stage3_joint
+  folder: outputs/mot/cholec20-mot-stage3-joint
+  name: cholec20-mot-stage3-joint-finetune
+  seed: 42
+  dtype: bfloat16
+  load_checkpoint: outputs/mot/cholec80-ct20-stage2-jepa-surgenet/latest.pth.tar
+
+data:
+  dataset_type: MOTCholecDataset
+  datasets:
+    - data/cholectrack20
+  clip_length: 3
+  img_size: 336
+  batch_size: 2
+  num_workers: 4
+  pin_memory: true
+
+model:
+  encoder_type: dinov2
+  model_name: dinov2_vitb14
+  encoder_dim: 768
+  neck_dim: 256
+  layer_indices: [-1]
+  encoder_checkpoint: outputs/mot/cholec20-stage1-surgenet/best.pth.tar
+  use_torch_hub: true
+  encoder_lora:
+    enable: true
+    rank: 16
+    alpha: 32
+    dropout: 0.05
+    target_modules: ['qkv', 'proj']
+    start_block: 0
+    end_block: null
+
+predictor:
+  dim: 256
+  num_heads: 8
+  num_encoder_layers: 4
+  num_decoder_layers: 2
+  dim_feedforward: 1024
+  dropout: 0.1
+
+detr:
+  num_tools: 7
+  num_queries: 48
+  num_decoder_layers: 6
+  nheads: 8
+  n_points: 4
+  dropout: 0.1
+  class_weight: 1.0
+  bbox_weight: 5.0
+  giou_weight: 2.0
+  focal_alpha: 0.25
+  focal_gamma: 2.0
+  use_deformable_detr: true
+  use_denoising: true
+  num_denoising_groups: 2
+  num_noise_per_group: 2
+  label_noise_prob: 0.2
+  box_noise_scale: 0.4
+  denoising_weight: 1.0
+
+reid:
+  embedding_dim: 256
+  supcon_weight: 1.0
+  supcon_temperature: 0.07
+  cross_consistency_weight: 0.0
+  dropout: 0.15
+
+tracker:
+  birth_score: 0.6
+  min_hits: 3
+  max_age: 30
+  reentry_ttl: 300
+  cost_threshold: 0.7
+
+losses:
+  track_weight: 1.0
+  track_cls_weight: 1.0
+  track_giou_weight: 2.0
+  reid_weight: 0.5
+
+stage_flags:
+  use_geometry: false
+  use_occusolver: false
+
+optimization:
+  lr: 5.0e-5              # lower than Stage 1 — fine-tuning
+  lora_lr: 1.0e-4          # LoRA adapter LR (same as Stage 1/2)
+  weight_decay: 1.0e-2
+  epochs: 50
+  min_lr: 1.0e-7
+  warmup_epochs: 2
+  gradient_clip_norm: 1.0
+  log_freq: 10

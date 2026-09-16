@@ -1,0 +1,78 @@
+meta:
+  folder: /mnt/scratch/scssali/dino_wm/vjepa_outputs/cholec20/supervised_detr_reid_l40s_optimized
+  read_checkpoint: /mnt/scratch/scssali/dino_wm/vjepa_outputs/cholec80/base_256px_16f/pretrained.pth
+  load_checkpoint: false
+  seed: 0
+  project: vjepa2-supervised-l40s
+  entity: default
+  name: cholec20-detr-reid-l40s-optimized
+
+model:
+  num_frames: 16
+  tubelet_size: 2
+  patch_size: 16
+  crop_size: 384  # INCREASED from 256 (L40S can handle 48GB)
+  backbone_arch: vit_base
+
+data:
+  dataset: cholec
+  data_dir: /mnt/scratch/scssali/cholec80
+  batch_size: 16  # REDUCED from 24 (use gradient accumulation instead)
+  num_workers: 8  # INCREASED from 4 (async data loading)
+  
+  # Pin memory for faster CPU→GPU transfer
+  pin_memory: true
+  
+  normalize_video: true
+  normalize_audio: false
+  allow_segment_overlap: true
+  drop_last: false
+
+optimization:
+  lr: 1.0e-4
+  weight_decay: 1.0e-2
+  epochs: 10
+  ema_decay: 0.999
+  
+  # Gradient accumulation for smoother convergence
+  # Effective batch_size = batch_size × accumulation_steps = 16 × 2 = 32
+  gradient_accumulation_steps: 2
+  gradient_clip_norm: 1.0
+  
+  # Mixed precision training (FP16 for 2-3× speedup on L40S)
+  use_mixed_precision: true
+
+supervised:
+  # DETR head for tool detection and tracking
+  detr_head:
+    enabled: true
+    num_tools: 7
+    num_queries: 16
+    nheads: 8
+    num_decoder_layers: 5  # INCREASED from 4 (L40S memory allows it)
+    dropout: 0.15  # Slight increase for regularization
+    class_weight: 1.0
+    bbox_weight: 0.0
+  
+  # ReID head for tool identification
+  reid_head:
+    enabled: true
+    embedding_dim: 256
+    num_classes: 7
+    pooling: mean
+    normalize_embeddings: true
+    dropout: 0.15  # INCREASED from 0.1 (regularization)
+    weight: 1.0
+  
+  # Encoder fine-tuning (frozen by default, can enable after warmup)
+  encoder:
+    trainable: false
+  
+  # Predictor auxiliary loss (disabled by default)
+  predictor:
+    enabled: false
+    trainable: false
+    aux_weight: 0.01
+  
+  # Pretrained checkpoint
+  pretrained_checkpoint: /mnt/scratch/scssali/dino_wm/vjepa_outputs/cholec80/base_256px_16f/pretrained.pth

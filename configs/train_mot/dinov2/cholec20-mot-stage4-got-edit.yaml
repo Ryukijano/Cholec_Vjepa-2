@@ -1,0 +1,123 @@
+# Stage 4 — Full GOT-Edit pipeline: geometry + occlusion + depth
+#            joint fine-tuning on CholecTrack20.
+#
+# Goal: HOTA > 55 with geometry-aware null-space editing and
+#        visibility-gated depth.
+
+meta:
+  stage: stage4_got_edit
+  folder: outputs/mot/cholec20-stage4-got-edit
+  name: cholec20-mot-stage4-got-edit
+  seed: 42
+  dtype: bfloat16
+  resume_from: outputs/mot/cholec20-stage3-joint/best.pth.tar
+
+data:
+  dataset_type: MOTCholecDataset
+  datasets:
+    - data/cholectrack20
+  clip_length: 3
+  img_size: 392
+  batch_size: 16          # GB10: ~11 GiB GPU at bs=12; try 16 with 3d_recon off
+  num_workers: 8          # Grace CPUs — parallel JPEG decode
+  pin_memory: true
+
+model:
+  encoder_type: dinov2
+  model_name: dinov2_vits14
+  encoder_dim: 384
+  neck_dim: 256
+  layer_indices: [-1]
+  encoder_checkpoint: null
+  use_torch_hub: true
+
+predictor:
+  dim: 256
+  num_heads: 8
+  num_encoder_layers: 4
+  num_decoder_layers: 2
+  dim_feedforward: 1024
+  dropout: 0.1
+
+detr:
+  use_deformable_detr: true
+  num_tools: 7
+  num_queries: 16
+  num_decoder_layers: 6
+  nheads: 8
+  n_points: 4
+  dropout: 0.1
+  class_weight: 1.0
+  bbox_weight: 5.0
+  giou_weight: 2.0
+  focal_alpha: 0.25
+  focal_gamma: 2.0
+
+reid:
+  embedding_dim: 256
+  supcon_weight: 1.0
+  supcon_temperature: 0.07
+  cross_consistency_weight: 0.0
+  dropout: 0.15
+
+tracker:
+  birth_score: 0.6
+  min_hits: 3
+  max_age: 30
+  reentry_ttl: 300
+  cost_threshold: 0.7
+
+losses:
+  track_weight: 1.0
+  track_cls_weight: 1.0
+  track_giou_weight: 2.0
+  reid_weight: 0.5
+  occu_weight: 0.3              # BCE(VisHead, frozen CoTracker visibility)
+  consist_weight: 0.1           # cos(ω_sem, ω_geo) when geometry is on
+  occu_gate_features: true     # Hadamard gate on cur_spatial before localiser
+  occu_max_tracks_per_batch: 6  # cap CoTracker calls per clip (memory/latency)
+
+# Stage 4 enables all advanced features
+stage_flags:
+  use_geometry: true       # VGGT + null-space projection
+  use_occusolver: true     # CoTracker3 visibility gating
+  use_depth: false         # depth disabled by default (heavy)
+
+# OccuSolver configuration
+occusolver:
+  stub: false
+  cotracker_version: 3
+  cotracker_mode: online
+  num_query_points: 4
+  num_refine_steps: 2
+  use_depth: false
+  freeze: true
+
+# Geometry branch configuration
+geometry:
+  vggt_variant: vggt_base   # legacy alias; loads facebook/VGGT-1B via HF + local clone (not torch.hub)
+  hf_model_id: facebook/VGGT-1B
+  freeze_vggt: true
+  stub: false               # set true for a tiny conv stub if HF/VGGT weights are unavailable
+  ridge_lambda: 1.0e-3
+  energy_threshold: 0.5
+
+optimization:
+  lr: 2.0e-4              # linear scale vs bs=4 @ 5e-5; lower to 1.5e-4 if unstable
+  weight_decay: 1.0e-2
+  epochs: 50
+  min_lr: 1.0e-6
+  warmup_epochs: 2
+  gradient_clip_norm: 1.0
+  log_freq: 10
+
+wandb:
+  enabled: true
+  project: surgical-mot
+  entity: null
+  name: stage4-got-edit
+  group: cholec80-ssl
+  job_type: train
+  tags: ["stage4", "got-edit", "geometry", "occusolver"]
+  watch: gradients
+  watch_freq: 100

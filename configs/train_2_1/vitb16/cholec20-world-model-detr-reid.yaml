@@ -1,0 +1,177 @@
+# V-JEPA 2.1 World Model with Multi-Scale Prediction + DETR/ReID Tracking
+# Configuration for Cholec20 surgical tool detection and tracking
+
+app: vjepa_2_1_world_model
+
+folder: /mnt/scratch/scssali/dino_wm/vjepa_outputs/cholec20/world_model_detr_reid
+
+meta:
+  folder: /mnt/scratch/scssali/dino_wm/vjepa_outputs/cholec20/world_model_detr_reid
+  read_checkpoint: /mnt/scratch/scssali/dino_wm/vjepa_outputs/cholec80/base_384px_16f_highutil/latest.pth.tar
+  load_checkpoint: false
+  seed: 42
+  project: vjepa2-world-model
+  entity: default
+  name: cholec20-world-model-detr-reid
+  save_every_freq: 1
+  dtype: bfloat16
+  use_sdpa: true
+
+# Data configuration
+data:
+  dataset_type: CholecDataset
+  datasets:
+    - /mnt/scratch/scssali/cholec80/cholec80
+  dataset_fpcs:
+    - 16
+  crop_size: 384
+  patch_size: 16
+  tubelet_size: 2
+  fps: 4
+  batch_size: 4
+  num_workers: 4
+  pin_mem: true
+  persistent_workers: false
+  
+  # Cholec-20 train split
+  include_videos:
+    - video02
+    - video04
+    - video05
+    - video08
+    - video09
+    - video10
+    - video11
+    - video13
+    - video14
+    - video15
+    - video16
+    - video17
+    - video18
+    - video19
+    - video20
+    - video21
+    - video22
+    - video23
+    - video24
+    - video26
+  exclude_videos:
+    - video01
+    - video06
+    - video07
+    - video12
+    - video25
+    - video30
+    - video39
+
+data_aug:
+  auto_augment: false
+  motion_shift: false
+  random_resize_aspect_ratio: [0.75, 1.35]
+  random_resize_scale: [0.3, 1.0]
+  reprob: 0.0
+
+# Model architecture
+model:
+  model_name: vit_base
+  embed_dim: 768
+  # Hierarchical layers for dense features (e.g., 4, 8, 12, -1 for last)
+  layer_indices: [4, 8, 12, -1]
+  pred_depth: 12
+  pred_num_heads: 12
+  pred_embed_dim: 384
+  use_mask_tokens: true
+  zero_init_mask_tokens: true
+  uniform_power: true
+  use_activation_checkpointing: false
+  use_rope: true
+  interpolate_rope: true
+  modality_embedding: true
+  has_cls_first: false
+  n_registers: 0
+  n_registers_predictor: 0
+  img_temporal_dim_size: 1
+  is_causal: false
+  pred_is_causal: false
+
+# Multi-scale temporal predictor
+predictor:
+  input_dim: 768
+  hidden_dim: 768
+  num_layers: 8
+  num_heads: 12
+  horizons: [1, 4, 16]
+  dropout: 0.1
+  max_seq_len: 256
+
+# World model loss
+world_model:
+  feature_weight: 1.0
+  temporal_consistency_weight: 0.1
+  horizon_weights: [1.0, 0.8, 0.5]  # Weights for 1, 4, 16 frame horizons
+
+# Supervised heads
+supervised:
+  # Hugging Face V-JEPA 2.1 model
+  # Options: facebook/vjepa2-vitb-fpc16-384, facebook/vjepa2-vitl-fpc16-384
+  hf_model_name: null  # Set to null if using torch.hub
+  
+  # Official V-JEPA 2.1 via torch.hub (recommended if HF is missing 2.1)
+  use_torch_hub: true
+  model_name: vjepa2_1_vit_base_384  # Options: vjepa2_1_vit_base_384, vjepa2_1_vit_large_384
+  
+  # Encoder remains frozen
+  encoder:
+    trainable: false
+  
+  # DETR head for tool detection
+  detr_head:
+    enabled: true
+    num_tools: 7  # Grasper, Bipolar, Hook, Scissors, Clipper, Irrigator, SpecimenBag
+    num_queries: 16
+    nheads: 8
+    num_decoder_layers: 5
+    dropout: 0.15
+    class_weight: 1.0
+    bbox_weight: 0.0  # No bbox for tool presence detection
+  
+  # ReID head for tool tracking
+  reid_head:
+    enabled: true
+    embedding_dim: 256
+    num_classes: 7
+    pooling: mean
+    normalize_embeddings: true
+    dropout: 0.15
+    ce_loss_weight: 1.0
+    embedding_l2_weight: 0.0
+  
+  # Curriculum learning for ReID
+  curriculum:
+    reid_weight_start: 0.2
+    reid_weight_end: 1.0
+    gradnorm_enabled: false
+    gradnorm_trigger_ratio: 3.0
+    gradnorm_trigger_patience_epochs: 2
+  
+  annotation_dir: /mnt/scratch/scssali/cholec80/cholec80/tool_annotations
+
+# Optimization
+optimization:
+  lr: 1.0e-4
+  weight_decay: 1.0e-2
+  epochs: 15
+  ipe: 200  # iterations per epoch (for logging)
+  log_freq: 10
+  
+  # Gradient accumulation for larger effective batch size
+  gradient_accumulation_steps: 4
+  gradient_clip_norm: 1.0
+  
+  # Mixed precision training
+  use_mixed_precision: true
+  
+  # Learning rate schedule
+  scheduler: cosine
+  warmup_epochs: 1
+  min_lr: 1.0e-6

@@ -1,0 +1,121 @@
+# V-JEPA 2.1 World Model with Tiny Predictor + Tri-Attention DETR/ReID
+# Optimized for RTX 4090 local training on CholecTrack20
+
+app: vjepa_2_1_world_model
+
+# Local output folder (Windows)
+folder: I:/surgi_world_track/outputs/cholec20_world_model
+
+meta:
+  folder: I:/surgi_world_track/outputs/cholec20_world_model
+  seed: 42
+  project: vjepa2-world-model
+  name: cholec20-4090-tiny-predictor
+  save_every_freq: 5
+  dtype: bfloat16
+  use_sdpa: true
+
+# Data configuration - CholecTrack20 local paths
+data:
+  dataset_type: CholecDataset
+  datasets:
+    - I:/surgi_world_track/data/cholectrack20
+  dataset_fpcs:
+    - 16
+  crop_size: 336  # Smaller for 4090 speed
+  patch_size: 16
+  tubelet_size: 2
+  fps: 4
+  batch_size: 4
+  num_workers: 0  # Windows: must be 0 to avoid multiprocessing issues
+  pin_mem: false  # Windows: disable pin_memory to avoid warnings
+  persistent_workers: false
+
+# Model architecture
+model:
+  model_name: vit_base
+  embed_dim: 768
+  layer_indices: [-1]    # Use only final layer - simpler, no HierarchicalTransformerFusion needed
+  pred_depth: 4          # Tiny predictor
+  pred_num_heads: 6      # Reduced heads
+  pred_embed_dim: 384    # Half dimension
+  use_mask_tokens: true
+  zero_init_mask_tokens: true
+  uniform_power: true
+  use_activation_checkpointing: false
+  use_rope: true
+
+# Multi-scale temporal predictor - TINY for fast convergence
+predictor:
+  input_dim: 768
+  hidden_dim: 384        # Half of encoder dim
+  num_layers: 4          # Shallow (was 8)
+  num_heads: 6           # Reduced (was 12)
+  horizons: [1, 4, 16]
+  dropout: 0.2           # More regularization
+  max_seq_len: 256
+  use_tiny_mode: true
+  mlp_ratio: 2.0         # Smaller MLP (was 4.0)
+
+# World model loss
+world_model:
+  feature_weight: 1.0
+  rollout_weight: 0.3
+  temporal_consistency_weight: 0.0
+
+# Supervised heads
+supervised:
+  # Local V-JEPA 2.1 checkpoint (user has this file)
+  pretrained_checkpoint: I:/surgi_world_track/vjepa2_1_vitb_dist_vitG_384.pt
+  
+  encoder:
+    trainable: false     # FROZEN - key for success
+  
+  detr_head:
+    enabled: true
+    num_tools: 7
+    num_queries: 16
+    nheads: 8
+    num_decoder_layers: 5
+    dropout: 0.15
+    neck_dim: 256  # Must match predictor hidden_dim for feature compatibility
+    encoder_dim: 768
+    # Tri-Attention settings
+    use_tri_attention: true
+    class_weight: 1.0
+    bbox_weight: 5.0
+    giou_weight: 2.0
+    focal_alpha: 0.25
+    focal_gamma: 2.0
+  
+  reid_head:
+    enabled: true
+    embedding_dim: 256
+    num_classes: 7
+    pooling: roi_align
+    normalize_embeddings: true
+    dropout: 0.15
+    use_supcon: true
+    use_phantom_features: true
+
+# Optimization for 4090
+optimization:
+  lr: 1.0e-4
+  weight_decay: 1.0e-4   # L2 regularization
+  epochs: 80
+  ipe: 100
+  log_freq: 10
+  
+  gradient_accumulation_steps: 1
+  gradient_clip_norm: 1.0
+  
+  use_mixed_precision: true
+  
+  scheduler: cosine
+  warmup_epochs: 2
+  min_lr: 1.0e-6
+  
+  # Differential LR for components
+  predictor_lr_mult: 1.0
+  detr_lr_mult: 1.0
+  reid_lr_mult: 1.0

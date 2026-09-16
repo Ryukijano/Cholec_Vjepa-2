@@ -1,0 +1,100 @@
+# Stage 4 — Full GOT stack: Stage 3 + VGGT geometry + null-space editor
+#            + OccuSolver visibility gating.
+#
+# Compute: geometry branch adds ~300M params (VGGT frozen) + ~60M
+# (CoTracker frozen). Expect ~2x slowdown vs Stage 3.
+
+meta:
+  stage: stage4_full
+  folder: outputs/mot/cholec20-stage4-full
+  name: cholec20-mot-stage4-full
+  seed: 42
+  dtype: bfloat16
+  load_checkpoint: outputs/mot/cholec20-stage3-joint-finetune/best.pth.tar
+
+data:
+  dataset_type: MOTCholecDataset
+  datasets:
+    - data/cholectrack20
+  clip_length: 3
+  img_size: 392
+  batch_size: 1           # geometry+occu blow memory; start small
+  num_workers: 4
+  pin_memory: true
+
+model:
+  encoder_type: dinov2
+  model_name: dinov2_vitb14
+  encoder_dim: 768
+  neck_dim: 256
+  layer_indices: [-1]
+  encoder_checkpoint: checkpoints/cholec20/supervised_detr_reid_base384/latest.pth.tar
+  use_torch_hub: true
+
+predictor:
+  dim: 256
+  num_heads: 8
+  num_encoder_layers: 4
+  num_decoder_layers: 2
+  dim_feedforward: 1024
+  dropout: 0.1
+
+detr:
+  num_tools: 7
+  num_queries: 16
+  num_decoder_layers: 5
+  nheads: 8
+  dropout: 0.15
+  class_weight: 1.0
+  bbox_weight: 5.0
+  giou_weight: 2.0
+  focal_alpha: 0.25
+  focal_gamma: 2.0
+
+reid:
+  embedding_dim: 256
+  supcon_weight: 1.0
+  supcon_temperature: 0.07
+  cross_consistency_weight: 0.1   # cos-sim between ω_with_geo and ω_without_geo
+  dropout: 0.15
+
+tracker:
+  birth_score: 0.6
+  min_hits: 3
+  max_age: 30
+  reentry_ttl: 300
+  cost_threshold: 0.7
+
+losses:
+  track_weight: 1.0
+  track_cls_weight: 1.0
+  track_giou_weight: 2.0
+  reid_weight: 0.5
+  occu_weight: 0.3                # BCE on VisHead
+  consist_weight: 0.1             # cos-sim(ω_with_geo, ω_without_geo)
+  occu_gate_features: true
+  occu_max_tracks_per_batch: 6
+
+stage_flags:
+  use_geometry: true
+  use_occusolver: true
+
+occusolver:
+  # CoTracker2 is the existing path; set to cotracker3 for rollout testing.
+  stub: false
+  cotracker_version: 2
+  cotracker_mode: offline
+  num_refine_steps: 0
+  num_query_points: 16
+  # Lean Geometry: Depth-Anything-V2-Small (~25M) replaces VGGT (~300M).
+  use_depth: true
+  depth_stub: false
+
+optimization:
+  lr: 1.0e-5              # very low — all modules aligned
+  weight_decay: 1.0e-2
+  epochs: 10
+  min_lr: 1.0e-8
+  warmup_epochs: 2        # freeze geometry/occu first 2 epochs
+  gradient_clip_norm: 1.0
+  log_freq: 5
